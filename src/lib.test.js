@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { domToVdom, vdomToDom, renderTo, diff } from "./lib.js";
+import { domToVdom, vdomToDom, renderTo, diff, applyPatches } from "./lib.js";
 
 // ── 헬퍼: HTML 문자열 → DOM 요소 ──
 function htmlToElement(html) {
@@ -525,5 +525,147 @@ describe("diff", () => {
 
     // REMOVE: ul의 세 번째 자식 삭제 (path: [2, 2])
     expect(patches).toContainEqual({ type: "REMOVE", path: [2, 2] });
+  });
+});
+
+// ═══════════════════════════════════════════
+// applyPatches 테스트
+// ═══════════════════════════════════════════
+describe("applyPatches", () => {
+  it("TEXT 패치가 주어지면 대상 텍스트 노드의 내용을 변경한다", () => {
+    // Given
+    const dom = htmlToElement("<div><p>old</p></div>");
+    const patches = [{ type: "TEXT", path: [0, 0], value: "new" }];
+
+    // When
+    applyPatches(dom, patches);
+
+    // Then
+    expect(dom.querySelector("p").textContent).toBe("new");
+  });
+
+  it("REPLACE 패치가 주어지면 대상 노드를 새 노드로 교체한다", () => {
+    // Given
+    const dom = htmlToElement("<div><p>old</p></div>");
+    const patches = [{
+      type: "REPLACE", path: [0],
+      newNode: { type: "span", props: {}, children: ["replaced"] },
+    }];
+
+    // When
+    applyPatches(dom, patches);
+
+    // Then
+    expect(dom.firstChild.tagName).toBe("SPAN");
+    expect(dom.firstChild.textContent).toBe("replaced");
+  });
+
+  it("PROPS 패치가 주어지면 속성을 추가/변경한다", () => {
+    // Given
+    const dom = htmlToElement('<div class="old"></div>');
+    const patches = [{ type: "PROPS", path: [], props: { class: "new", id: "main" } }];
+
+    // When
+    applyPatches(dom, patches);
+
+    // Then
+    expect(dom.getAttribute("class")).toBe("new");
+    expect(dom.getAttribute("id")).toBe("main");
+  });
+
+  it("PROPS 패치에서 null 값이 주어지면 해당 속성을 삭제한다", () => {
+    // Given
+    const dom = htmlToElement('<div class="box" id="main"></div>');
+    const patches = [{ type: "PROPS", path: [], props: { id: null } }];
+
+    // When
+    applyPatches(dom, patches);
+
+    // Then
+    expect(dom.getAttribute("class")).toBe("box");
+    expect(dom.hasAttribute("id")).toBe(false);
+  });
+
+  it("ADD 패치가 주어지면 부모에 새 자식 노드를 추가한다", () => {
+    // Given
+    const dom = htmlToElement("<ul><li>A</li></ul>");
+    const patches = [{
+      type: "ADD", path: [1],
+      newNode: { type: "li", props: {}, children: ["B"] },
+    }];
+
+    // When
+    applyPatches(dom, patches);
+
+    // Then
+    expect(dom.childNodes.length).toBe(2);
+    expect(dom.childNodes[1].textContent).toBe("B");
+  });
+
+  it("REMOVE 패치가 주어지면 대상 자식 노드를 삭제한다", () => {
+    // Given
+    const dom = htmlToElement("<ul><li>A</li><li>B</li></ul>");
+    const patches = [{ type: "REMOVE", path: [1] }];
+
+    // When
+    applyPatches(dom, patches);
+
+    // Then
+    expect(dom.childNodes.length).toBe(1);
+    expect(dom.childNodes[0].textContent).toBe("A");
+  });
+
+  it("여러 REMOVE 패치가 주어지면 인덱스 시프트 없이 역순으로 적용한다", () => {
+    // Given
+    const dom = htmlToElement("<ul><li>A</li><li>B</li><li>C</li><li>D</li></ul>");
+    const patches = [
+      { type: "REMOVE", path: [1] },
+      { type: "REMOVE", path: [2] },
+    ];
+
+    // When
+    applyPatches(dom, patches);
+
+    // Then — B(1)와 C(2)가 삭제되고 A, D만 남아야 한다
+    expect(dom.childNodes.length).toBe(2);
+    expect(dom.childNodes[0].textContent).toBe("A");
+    expect(dom.childNodes[1].textContent).toBe("D");
+  });
+
+  it("diff 결과를 applyPatches에 적용하면 DOM이 newVdom과 동일해진다", () => {
+    // Given
+    const oldVdom = {
+      type: "div", props: {}, children: [
+        { type: "h1", props: {}, children: ["Hello"] },
+        { type: "p", props: { style: "color: blue" }, children: ["Demo"] },
+        {
+          type: "ul", props: {}, children: [
+            { type: "li", props: {}, children: ["Item 1"] },
+            { type: "li", props: {}, children: ["Item 2"] },
+            { type: "li", props: {}, children: ["Item 3"] },
+          ],
+        },
+      ],
+    };
+    const newVdom = {
+      type: "div", props: {}, children: [
+        { type: "h1", props: {}, children: ["Changed!"] },
+        { type: "span", props: {}, children: ["New element"] },
+        {
+          type: "ul", props: { class: "list" }, children: [
+            { type: "li", props: {}, children: ["Item 1"] },
+            { type: "li", props: {}, children: ["Item 3"] },
+          ],
+        },
+      ],
+    };
+    const dom = vdomToDom(oldVdom);
+    const patches = diff(oldVdom, newVdom);
+
+    // When
+    applyPatches(dom, patches);
+
+    // Then — 패치 적용 후 DOM을 다시 vDOM으로 변환하면 newVdom과 동일해야 한다
+    expect(domToVdom(dom)).toEqual(newVdom);
   });
 });
