@@ -1,0 +1,244 @@
+import { describe, it, expect } from "vitest";
+import { domToVdom, vdomToDom, renderTo } from "./lib.js";
+
+// ── 헬퍼: HTML 문자열 → DOM 요소 ──
+function htmlToElement(html) {
+  const template = document.createElement("template");
+  template.innerHTML = html.trim();
+  return template.content.firstChild;
+}
+
+// ═══════════════════════════════════════════
+// domToVdom 테스트
+// ═══════════════════════════════════════════
+describe("domToVdom", () => {
+  it("텍스트 노드가 주어지면 문자열을 반환한다", () => {
+    // Given
+    const textNode = document.createTextNode("hello");
+
+    // When
+    const result = domToVdom(textNode);
+
+    // Then
+    expect(result).toBe("hello");
+  });
+
+  it("자식이 없는 요소가 주어지면 빈 children 배열을 가진 vDOM 객체를 반환한다", () => {
+    // Given
+    const el = htmlToElement("<div></div>");
+
+    // When
+    const result = domToVdom(el);
+
+    // Then
+    expect(result).toEqual({ type: "div", props: {}, children: [] });
+  });
+
+  it("속성이 있는 요소가 주어지면 props 객체에 속성을 포함한다", () => {
+    // Given
+    const el = htmlToElement('<p style="color: blue" class="text"></p>');
+
+    // When
+    const result = domToVdom(el);
+
+    // Then
+    expect(result.props).toEqual({ style: "color: blue", class: "text" });
+  });
+
+  it("중첩된 자식 요소가 주어지면 재귀적으로 변환한다", () => {
+    // Given
+    const el = htmlToElement("<ul><li>A</li><li>B</li></ul>");
+
+    // When
+    const result = domToVdom(el);
+
+    // Then
+    expect(result).toEqual({
+      type: "ul",
+      props: {},
+      children: [
+        { type: "li", props: {}, children: ["A"] },
+        { type: "li", props: {}, children: ["B"] },
+      ],
+    });
+  });
+
+  it("태그 사이에 공백 텍스트 노드가 있으면 필터링한다", () => {
+    // Given — HTML의 줄바꿈/들여쓰기가 공백 텍스트 노드를 생성
+    const el = htmlToElement(`<div>
+      <span>hi</span>
+    </div>`);
+
+    // When
+    const result = domToVdom(el);
+
+    // Then
+    expect(result.children).toEqual([
+      { type: "span", props: {}, children: ["hi"] },
+    ]);
+  });
+
+  it("여러 레벨로 중첩된 복잡한 구조가 주어지면 전체를 올바르게 변환한다", () => {
+    // Given
+    const el = htmlToElement(`<div>
+      <h1>Hello</h1>
+      <p style="color: blue">Virtual DOM Demo</p>
+      <ul><li>Item 1</li><li>Item 2</li><li>Item 3</li></ul>
+    </div>`);
+
+    // When
+    const result = domToVdom(el);
+
+    // Then
+    expect(result).toEqual({
+      type: "div",
+      props: {},
+      children: [
+        { type: "h1", props: {}, children: ["Hello"] },
+        { type: "p", props: { style: "color: blue" }, children: ["Virtual DOM Demo"] },
+        {
+          type: "ul",
+          props: {},
+          children: [
+            { type: "li", props: {}, children: ["Item 1"] },
+            { type: "li", props: {}, children: ["Item 2"] },
+            { type: "li", props: {}, children: ["Item 3"] },
+          ],
+        },
+      ],
+    });
+  });
+});
+
+// ═══════════════════════════════════════════
+// vdomToDom 테스트
+// ═══════════════════════════════════════════
+describe("vdomToDom", () => {
+  it("문자열 vnode가 주어지면 텍스트 노드를 생성한다", () => {
+    // Given
+    const vnode = "hello";
+
+    // When
+    const node = vdomToDom(vnode);
+
+    // Then
+    expect(node.nodeType).toBe(Node.TEXT_NODE);
+    expect(node.textContent).toBe("hello");
+  });
+
+  it("빈 vDOM 객체가 주어지면 자식 없는 요소를 생성한다", () => {
+    // Given
+    const vnode = { type: "div", props: {}, children: [] };
+
+    // When
+    const node = vdomToDom(vnode);
+
+    // Then
+    expect(node.tagName).toBe("DIV");
+    expect(node.childNodes.length).toBe(0);
+  });
+
+  it("props가 있는 vDOM 객체가 주어지면 요소에 속성을 설정한다", () => {
+    // Given
+    const vnode = {
+      type: "p",
+      props: { style: "color: red", class: "text" },
+      children: [],
+    };
+
+    // When
+    const node = vdomToDom(vnode);
+
+    // Then
+    expect(node.getAttribute("style")).toBe("color: red");
+    expect(node.getAttribute("class")).toBe("text");
+  });
+
+  it("자식이 있는 vDOM 객체가 주어지면 재귀적으로 DOM을 생성한다", () => {
+    // Given
+    const vnode = {
+      type: "ul",
+      props: {},
+      children: [
+        { type: "li", props: {}, children: ["A"] },
+        { type: "li", props: {}, children: ["B"] },
+      ],
+    };
+
+    // When
+    const node = vdomToDom(vnode);
+
+    // Then
+    expect(node.childNodes.length).toBe(2);
+    expect(node.childNodes[0].textContent).toBe("A");
+    expect(node.childNodes[1].textContent).toBe("B");
+  });
+});
+
+// ═══════════════════════════════════════════
+// renderTo 테스트
+// ═══════════════════════════════════════════
+describe("renderTo", () => {
+  it("기존 내용이 있는 컨테이너가 주어지면 비우고 새 vDOM을 렌더링한다", () => {
+    // Given
+    const container = document.createElement("div");
+    container.innerHTML = "<p>old content</p>";
+    const vdom = { type: "span", props: {}, children: ["new"] };
+
+    // When
+    renderTo(container, vdom);
+
+    // Then
+    expect(container.childNodes.length).toBe(1);
+    expect(container.firstChild.tagName).toBe("SPAN");
+    expect(container.firstChild.textContent).toBe("new");
+  });
+});
+
+// ═══════════════════════════════════════════
+// 라운드트립 테스트 (DOM → vDOM → DOM → vDOM)
+// ═══════════════════════════════════════════
+describe("라운드트립", () => {
+  it("복잡한 DOM 구조가 주어지면 vDOM 변환 후 복원해도 동일한 vDOM을 얻는다", () => {
+    // Given
+    const original = htmlToElement(`<div>
+      <h1>Hello</h1>
+      <p style="color: blue">Virtual DOM Demo</p>
+      <ul><li>Item 1</li><li>Item 2</li><li>Item 3</li></ul>
+    </div>`);
+
+    // When
+    const vdom1 = domToVdom(original);
+    const reconstructed = vdomToDom(vdom1);
+    const vdom2 = domToVdom(reconstructed);
+
+    // Then
+    expect(vdom2).toEqual(vdom1);
+  });
+
+  it("단순 텍스트 요소가 주어지면 라운드트립 후에도 동일한 vDOM을 얻는다", () => {
+    // Given
+    const el = htmlToElement("<span>hello</span>");
+
+    // When
+    const vdom = domToVdom(el);
+    const rebuilt = vdomToDom(vdom);
+    const vdomAfter = domToVdom(rebuilt);
+
+    // Then
+    expect(vdomAfter).toEqual(vdom);
+  });
+
+  it("다중 속성 요소가 주어지면 라운드트립 후에도 동일한 vDOM을 얻는다", () => {
+    // Given
+    const el = htmlToElement('<input type="text" placeholder="name" class="field">');
+
+    // When
+    const vdom = domToVdom(el);
+    const rebuilt = vdomToDom(vdom);
+    const vdomAfter = domToVdom(rebuilt);
+
+    // Then
+    expect(vdomAfter).toEqual(vdom);
+  });
+});
