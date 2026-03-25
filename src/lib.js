@@ -1,6 +1,15 @@
 import { NodeType, PatchType } from "./constants.js";
 
+// lib만 봐도 동작해야해서 export를 써서 공개
 export { NodeType, PatchType } from "./constants.js";
+
+export function textNode(value) {
+  return { nodeType: NodeType.TEXT, value };
+}
+
+export function elementNode(type, props = {}, children = []) {
+  return { nodeType: NodeType.ELEMENT, type, props, children };
+}
 
 /**
  * domToVdom(domNode) — 실제 DOM → vDOM 변환
@@ -11,7 +20,7 @@ export { NodeType, PatchType } from "./constants.js";
 export function domToVdom(domNode) {
   // 텍스트 노드 → 문자열
   if (domNode.nodeType === Node.TEXT_NODE) {
-    return { nodeType: NodeType.TEXT, value: domNode.textContent };
+    return textNode(domNode.textContent);
   }
 
   // 요소 노드 → { type, props, children }
@@ -31,7 +40,7 @@ export function domToVdom(domNode) {
     children.push(domToVdom(child));
   }
 
-  return { nodeType: NodeType.ELEMENT, type, props, children };
+  return elementNode(type, props, children);
 }
 
 /**
