@@ -31,5 +31,11 @@ export function createHistory(initialVdom) {
     canForward() {
       return index < states.length - 1;
     },
+    entries() {
+      return states.slice();
+    },
+    currentIndex() {
+      return index;
+    },
   };
 }
