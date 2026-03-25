@@ -7,46 +7,95 @@
     <title>Mini React</title>
     <style>
       body { font-family: sans-serif; padding: 20px; }
+      .toolbar { margin-bottom: 16px; display: flex; gap: 8px; }
+      .toolbar button {
+        padding: 6px 16px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        background: #fff;
+        cursor: pointer;
+      }
+      .toolbar button:disabled { opacity: 0.4; cursor: default; }
+      .toolbar button:not(:disabled):hover { background: #f0f0f0; }
       .container { display: flex; gap: 40px; }
       .panel-wrapper { flex: 1; }
       .panel-wrapper h2 { color: #555; font-size: 14px; }
-      .panel { border: 1px solid #ccc; padding: 16px; border-radius: 8px; }
+      .panel { border: 1px solid #ccc; padding: 16px; border-radius: 8px; min-height: 120px; }
     </style>
   </head>
   <body>
-    <h1>Phase 1: DOM ↔ vDOM 라운드트립 검증</h1>
+    <h1>Virtual DOM Diff & Patch Demo</h1>
+
+    <div class="toolbar">
+      <button id="btn-patch">Patch</button>
+      <button id="btn-back" disabled>◀ 뒤로가기</button>
+      <button id="btn-forward" disabled>앞으로가기 ▶</button>
+    </div>
+
     <div class="container">
       <div class="panel-wrapper">
-        <h2>Source (원본 DOM)</h2>
-        <div class="panel" id="source"><div>
+        <h2>실제 영역 (읽기 전용)</h2>
+        <div class="panel" id="real-area"><div>
             <h1>Hello</h1>
             <p style="color: blue">Virtual DOM Demo</p>
             <ul><li>Item 1</li><li>Item 2</li><li>Item 3</li></ul>
         </div></div>
       </div>
       <div class="panel-wrapper">
-        <h2>Target (vDOM → DOM 복원)</h2>
-        <div class="panel" id="target"></div>
+        <h2>테스트 영역 (편집 가능)</h2>
+        <div class="panel" id="test-area"></div>
       </div>
     </div>
 
     <script type="module">
-      import { domToVdom, vdomToDom, renderTo } from "/src/lib.js";
+      import { domToVdom, renderTo, diff, applyPatches, createHistory } from "/src/lib.js";
 
-      const source = document.getElementById("source");
-      const target = document.getElementById("target");
+      const realArea = document.getElementById("real-area");
+      const testArea = document.getElementById("test-area");
+      const btnPatch = document.getElementById("btn-patch");
+      const btnBack = document.getElementById("btn-back");
+      const btnForward = document.getElementById("btn-forward");
 
-      // 1. source의 firstElementChild → vDOM 변환
-      const vdom = domToVdom(source.firstElementChild);
-      console.log("vDOM:", vdom);
+      // 초기화
+      const initialVdom = domToVdom(realArea.firstElementChild);
+      const history = createHistory(initialVdom);
+      renderTo(testArea, initialVdom);
+      testArea.contentEditable = "true";
 
-      // 2. vDOM → target DOM 렌더링 (라운드트립)
-      renderTo(target, vdom);
+      function updateButtons() {
+        btnBack.disabled = !history.canBack();
+        btnForward.disabled = !history.canForward();
+      }
 
-      // 3. 라운드트립 검증 (vDOM 레벨에서 비교 — 공백 차이 무시)
-      const vdomRoundtrip = domToVdom(target.firstElementChild);
-      const match = JSON.stringify(vdom) === JSON.stringify(vdomRoundtrip);
-      console.log("라운드트립 일치:", match);
+      // Patch 버튼
+      btnPatch.addEventListener("click", () => {
+        const newVdom = domToVdom(testArea.firstElementChild);
+        const patches = diff(history.current(), newVdom);
+
+        if (patches.length === 0) return;
+
+        applyPatches(realArea.firstElementChild, patches);
+        history.push(newVdom);
+        updateButtons();
+      });
+
+      // 뒤로가기
+      btnBack.addEventListener("click", () => {
+        const targetVdom = history.back();
+        renderTo(realArea, targetVdom);
+        renderTo(testArea, targetVdom);
+        testArea.contentEditable = "true";
+        updateButtons();
+      });
+
+      // 앞으로가기
+      btnForward.addEventListener("click", () => {
+        const targetVdom = history.forward();
+        renderTo(realArea, targetVdom);
+        renderTo(testArea, targetVdom);
+        testArea.contentEditable = "true";
+        updateButtons();
+      });
     </script>
   </body>
 </html>
