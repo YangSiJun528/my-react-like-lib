@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { domToVdom, vdomToDom, renderTo, diff, applyPatches } from "./lib.js";
+import { domToVdom, vdomToDom, renderTo, diff, applyPatches, createHistory } from "./lib.js";
 
 // ── 헬퍼: HTML 문자열 → DOM 요소 ──
 function htmlToElement(html) {
@@ -667,5 +667,140 @@ describe("applyPatches", () => {
 
     // Then — 패치 적용 후 DOM을 다시 vDOM으로 변환하면 newVdom과 동일해야 한다
     expect(domToVdom(dom)).toEqual(newVdom);
+  });
+});
+
+// ═══════════════════════════════════════════
+// createHistory 테스트
+// ═══════════════════════════════════════════
+describe("createHistory", () => {
+  it("초기 vdom이 주어지면 current로 해당 상태를 반환한다", () => {
+    // Given
+    const initial = { type: "div", props: {}, children: ["v1"] };
+
+    // When
+    const h = createHistory(initial);
+
+    // Then
+    expect(h.current()).toEqual(initial);
+  });
+
+  it("push로 상태를 추가하면 current가 새 상태를 반환한다", () => {
+    // Given
+    const h = createHistory({ type: "div", props: {}, children: ["v1"] });
+    const v2 = { type: "div", props: {}, children: ["v2"] };
+
+    // When
+    h.push(v2);
+
+    // Then
+    expect(h.current()).toEqual(v2);
+  });
+
+  it("back을 호출하면 이전 상태를 반환한다", () => {
+    // Given
+    const v1 = { type: "div", props: {}, children: ["v1"] };
+    const v2 = { type: "div", props: {}, children: ["v2"] };
+    const h = createHistory(v1);
+    h.push(v2);
+
+    // When
+    const result = h.back();
+
+    // Then
+    expect(result).toEqual(v1);
+    expect(h.current()).toEqual(v1);
+  });
+
+  it("forward를 호출하면 다음 상태를 반환한다", () => {
+    // Given
+    const v1 = { type: "div", props: {}, children: ["v1"] };
+    const v2 = { type: "div", props: {}, children: ["v2"] };
+    const h = createHistory(v1);
+    h.push(v2);
+    h.back();
+
+    // When
+    const result = h.forward();
+
+    // Then
+    expect(result).toEqual(v2);
+    expect(h.current()).toEqual(v2);
+  });
+
+  it("첫 번째 상태에서 back을 호출하면 현재 상태를 유지한다", () => {
+    // Given
+    const v1 = { type: "div", props: {}, children: ["v1"] };
+    const h = createHistory(v1);
+
+    // When
+    const result = h.back();
+
+    // Then
+    expect(result).toEqual(v1);
+  });
+
+  it("마지막 상태에서 forward를 호출하면 현재 상태를 유지한다", () => {
+    // Given
+    const v1 = { type: "div", props: {}, children: ["v1"] };
+    const h = createHistory(v1);
+
+    // When
+    const result = h.forward();
+
+    // Then
+    expect(result).toEqual(v1);
+  });
+
+  it("canBack은 이전 상태가 있을 때만 true를 반환한다", () => {
+    // Given
+    const h = createHistory({ type: "div", props: {}, children: ["v1"] });
+
+    // Then
+    expect(h.canBack()).toBe(false);
+
+    // When
+    h.push({ type: "div", props: {}, children: ["v2"] });
+
+    // Then
+    expect(h.canBack()).toBe(true);
+  });
+
+  it("canForward는 다음 상태가 있을 때만 true를 반환한다", () => {
+    // Given
+    const h = createHistory({ type: "div", props: {}, children: ["v1"] });
+    h.push({ type: "div", props: {}, children: ["v2"] });
+
+    // Then — 마지막 상태이므로 false
+    expect(h.canForward()).toBe(false);
+
+    // When
+    h.back();
+
+    // Then
+    expect(h.canForward()).toBe(true);
+  });
+
+  it("히스토리 중간에서 push하면 이후 상태를 잘라내고 새 상태를 추가한다", () => {
+    // Given
+    const v1 = { type: "div", props: {}, children: ["v1"] };
+    const v2 = { type: "div", props: {}, children: ["v2"] };
+    const v3 = { type: "div", props: {}, children: ["v3"] };
+    const v4 = { type: "div", props: {}, children: ["v4"] };
+    const h = createHistory(v1);
+    h.push(v2);
+    h.push(v3);
+    h.back(); // v2로 이동
+
+    // When
+    h.push(v4); // v3이 잘려나가고 v4가 추가
+
+    // Then
+    expect(h.current()).toEqual(v4);
+    expect(h.canForward()).toBe(false);
+    h.back();
+    expect(h.current()).toEqual(v2);
+    h.back();
+    expect(h.current()).toEqual(v1);
   });
 });
