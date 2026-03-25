@@ -56,9 +56,10 @@
       const btnBack = document.getElementById("btn-back");
       const btnForward = document.getElementById("btn-forward");
 
-      // 초기화
+      // 초기화 — realArea도 renderTo로 재렌더링하여 공백 텍스트 노드 제거
       const initialVdom = domToVdom(realArea.firstElementChild);
       const history = createHistory(initialVdom);
+      renderTo(realArea, initialVdom);
       renderTo(testArea, initialVdom);
       testArea.contentEditable = "true";
 
