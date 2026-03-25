@@ -440,6 +440,37 @@ describe("diff", () => {
     expect(patches).toEqual([]);
   });
 
+  // ── path 전달 ──
+  it("초기 path가 주어지면 모든 패치 경로에 접두사로 포함된다", () => {
+    // Given
+    const oldVdom = {
+      type: "div", props: {}, children: [
+        { type: "p", props: {}, children: ["old"] },
+      ],
+    };
+    const newVdom = {
+      type: "div", props: { class: "new" }, children: [
+        { type: "p", props: {}, children: ["new"] },
+        { type: "span", props: {}, children: ["added"] },
+      ],
+    };
+    const basePath = [1, 3];
+
+    // When
+    const patches = diff(oldVdom, newVdom, basePath);
+
+    // Then — 모든 패치의 path가 basePath로 시작해야 한다
+    for (const patch of patches) {
+      expect(patch.path.slice(0, 2)).toEqual([1, 3]);
+    }
+    expect(patches).toContainEqual({ type: "PROPS", path: [1, 3], props: { class: "new" } });
+    expect(patches).toContainEqual({ type: "TEXT", path: [1, 3, 0, 0], value: "new" });
+    expect(patches).toContainEqual({
+      type: "ADD", path: [1, 3, 1],
+      newNode: { type: "span", props: {}, children: ["added"] },
+    });
+  });
+
   // ── 복합 시나리오: 계획서의 Phase 2 검증 케이스 ──
   it("여러 종류의 변경이 동시에 있으면 모든 패치 타입을 올바르게 생성한다", () => {
     // Given — Phase 2 계획서의 검증 시나리오
