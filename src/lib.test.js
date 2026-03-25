@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { domToVdom, vdomToDom, renderTo } from "./lib.js";
+import { domToVdom, vdomToDom, renderTo, diff } from "./lib.js";
 
 // ── 헬퍼: HTML 문자열 → DOM 요소 ──
 function htmlToElement(html) {
@@ -240,5 +240,259 @@ describe("라운드트립", () => {
 
     // Then
     expect(vdomAfter).toEqual(vdom);
+  });
+});
+
+// ═══════════════════════════════════════════
+// diff 테스트
+// ═══════════════════════════════════════════
+describe("diff", () => {
+  // ── TEXT 패치 ──
+  it("양쪽 텍스트 노드의 내용이 다르면 TEXT 패치를 생성한다", () => {
+    // Given
+    const oldVdom = "hello";
+    const newVdom = "world";
+
+    // When
+    const patches = diff(oldVdom, newVdom);
+
+    // Then
+    expect(patches).toEqual([
+      { type: "TEXT", path: [], value: "world" },
+    ]);
+  });
+
+  it("양쪽 텍스트 노드의 내용이 같으면 빈 패치 목록을 반환한다", () => {
+    // Given
+    const oldVdom = "same";
+    const newVdom = "same";
+
+    // When
+    const patches = diff(oldVdom, newVdom);
+
+    // Then
+    expect(patches).toEqual([]);
+  });
+
+  // ── REPLACE 패치 ──
+  it("텍스트 노드와 요소 노드가 주어지면 REPLACE 패치를 생성한다", () => {
+    // Given
+    const oldVdom = "text";
+    const newVdom = { type: "span", props: {}, children: ["text"] };
+
+    // When
+    const patches = diff(oldVdom, newVdom);
+
+    // Then
+    expect(patches).toEqual([
+      { type: "REPLACE", path: [], newNode: newVdom },
+    ]);
+  });
+
+  it("태그명이 다른 요소가 주어지면 REPLACE 패치를 생성한다", () => {
+    // Given
+    const oldVdom = { type: "p", props: {}, children: ["text"] };
+    const newVdom = { type: "span", props: {}, children: ["text"] };
+
+    // When
+    const patches = diff(oldVdom, newVdom);
+
+    // Then
+    expect(patches).toEqual([
+      { type: "REPLACE", path: [], newNode: newVdom },
+    ]);
+  });
+
+  // ── PROPS 패치 ──
+  it("속성이 추가되면 PROPS 패치에 새 값을 포함한다", () => {
+    // Given
+    const oldVdom = { type: "div", props: {}, children: [] };
+    const newVdom = { type: "div", props: { class: "box" }, children: [] };
+
+    // When
+    const patches = diff(oldVdom, newVdom);
+
+    // Then
+    expect(patches).toEqual([
+      { type: "PROPS", path: [], props: { class: "box" } },
+    ]);
+  });
+
+  it("속성이 변경되면 PROPS 패치에 변경된 값을 포함한다", () => {
+    // Given
+    const oldVdom = { type: "div", props: { class: "old" }, children: [] };
+    const newVdom = { type: "div", props: { class: "new" }, children: [] };
+
+    // When
+    const patches = diff(oldVdom, newVdom);
+
+    // Then
+    expect(patches).toEqual([
+      { type: "PROPS", path: [], props: { class: "new" } },
+    ]);
+  });
+
+  it("속성이 삭제되면 PROPS 패치에 null 값을 포함한다", () => {
+    // Given
+    const oldVdom = { type: "div", props: { class: "box", id: "main" }, children: [] };
+    const newVdom = { type: "div", props: { class: "box" }, children: [] };
+
+    // When
+    const patches = diff(oldVdom, newVdom);
+
+    // Then
+    expect(patches).toEqual([
+      { type: "PROPS", path: [], props: { id: null } },
+    ]);
+  });
+
+  it("속성이 동일하면 PROPS 패치를 생성하지 않는다", () => {
+    // Given
+    const oldVdom = { type: "div", props: { class: "box" }, children: [] };
+    const newVdom = { type: "div", props: { class: "box" }, children: [] };
+
+    // When
+    const patches = diff(oldVdom, newVdom);
+
+    // Then
+    expect(patches).toEqual([]);
+  });
+
+  // ── ADD 패치 ──
+  it("new에만 자식이 있으면 ADD 패치를 생성한다", () => {
+    // Given
+    const oldVdom = { type: "ul", props: {}, children: [] };
+    const newVdom = {
+      type: "ul", props: {}, children: [
+        { type: "li", props: {}, children: ["A"] },
+      ],
+    };
+
+    // When
+    const patches = diff(oldVdom, newVdom);
+
+    // Then
+    expect(patches).toEqual([
+      { type: "ADD", path: [0], newNode: { type: "li", props: {}, children: ["A"] } },
+    ]);
+  });
+
+  // ── REMOVE 패치 ──
+  it("old에만 자식이 있으면 REMOVE 패치를 생성한다", () => {
+    // Given
+    const oldVdom = {
+      type: "ul", props: {}, children: [
+        { type: "li", props: {}, children: ["A"] },
+        { type: "li", props: {}, children: ["B"] },
+      ],
+    };
+    const newVdom = {
+      type: "ul", props: {}, children: [
+        { type: "li", props: {}, children: ["A"] },
+      ],
+    };
+
+    // When
+    const patches = diff(oldVdom, newVdom);
+
+    // Then
+    expect(patches).toEqual([
+      { type: "REMOVE", path: [1] },
+    ]);
+  });
+
+  // ── 자식 재귀 비교 ──
+  it("중첩된 자식의 텍스트가 변경되면 올바른 path로 패치를 생성한다", () => {
+    // Given
+    const oldVdom = {
+      type: "div", props: {}, children: [
+        { type: "h1", props: {}, children: ["Hello"] },
+      ],
+    };
+    const newVdom = {
+      type: "div", props: {}, children: [
+        { type: "h1", props: {}, children: ["Changed"] },
+      ],
+    };
+
+    // When
+    const patches = diff(oldVdom, newVdom);
+
+    // Then
+    expect(patches).toEqual([
+      { type: "TEXT", path: [0, 0], value: "Changed" },
+    ]);
+  });
+
+  // ── 동일한 vDOM ──
+  it("동일한 vDOM이 주어지면 빈 패치 목록을 반환한다", () => {
+    // Given
+    const vdom = {
+      type: "div", props: { class: "box" }, children: [
+        { type: "p", props: {}, children: ["hello"] },
+      ],
+    };
+
+    // When
+    const patches = diff(vdom, vdom);
+
+    // Then
+    expect(patches).toEqual([]);
+  });
+
+  // ── 복합 시나리오: 계획서의 Phase 2 검증 케이스 ──
+  it("여러 종류의 변경이 동시에 있으면 모든 패치 타입을 올바르게 생성한다", () => {
+    // Given — Phase 2 계획서의 검증 시나리오
+    const oldVdom = {
+      type: "div", props: {}, children: [
+        { type: "h1", props: {}, children: ["Hello"] },
+        { type: "p", props: { style: "color: blue" }, children: ["Virtual DOM Demo"] },
+        {
+          type: "ul", props: {}, children: [
+            { type: "li", props: {}, children: ["Item 1"] },
+            { type: "li", props: {}, children: ["Item 2"] },
+            { type: "li", props: {}, children: ["Item 3"] },
+          ],
+        },
+      ],
+    };
+    const newVdom = {
+      type: "div", props: {}, children: [
+        { type: "h1", props: {}, children: ["Changed!"] },          // TEXT 변경
+        { type: "span", props: {}, children: ["New element"] },     // REPLACE (p→span)
+        {
+          type: "ul", props: { class: "list" }, children: [         // PROPS 변경
+            { type: "li", props: {}, children: ["Item 1"] },
+            { type: "li", props: {}, children: ["Item 3"] },        // Item 2→Item 3 (TEXT)
+            // Item 3 삭제 → REMOVE
+          ],
+        },
+      ],
+    };
+
+    // When
+    const patches = diff(oldVdom, newVdom);
+
+    // Then
+    const types = patches.map((p) => p.type);
+    expect(types).toContain("TEXT");
+    expect(types).toContain("REPLACE");
+    expect(types).toContain("PROPS");
+    expect(types).toContain("REMOVE");
+
+    // TEXT: h1 텍스트 변경 (path: [0, 0])
+    expect(patches).toContainEqual({ type: "TEXT", path: [0, 0], value: "Changed!" });
+
+    // REPLACE: p → span (path: [1])
+    expect(patches).toContainEqual({
+      type: "REPLACE", path: [1],
+      newNode: { type: "span", props: {}, children: ["New element"] },
+    });
+
+    // PROPS: ul에 class 추가 (path: [2])
+    expect(patches).toContainEqual({ type: "PROPS", path: [2], props: { class: "list" } });
+
+    // REMOVE: ul의 세 번째 자식 삭제 (path: [2, 2])
+    expect(patches).toContainEqual({ type: "REMOVE", path: [2, 2] });
   });
 });
