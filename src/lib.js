@@ -1,13 +1,17 @@
+import { NodeType } from "./constants.js";
+
+export { NodeType } from "./constants.js";
+
 /**
  * domToVdom(domNode) — 실제 DOM → vDOM 변환
  *
- * TEXT_NODE → 문자열 반환
- * ELEMENT_NODE → { type, props, children } 객체 반환
+ * TEXT_NODE → { nodeType: NodeType.TEXT, value } 반환
+ * ELEMENT_NODE → { nodeType: NodeType.ELEMENT, type, props, children } 반환
  */
 export function domToVdom(domNode) {
   // 텍스트 노드 → 문자열
   if (domNode.nodeType === Node.TEXT_NODE) {
-    return domNode.textContent;
+    return { nodeType: NodeType.TEXT, value: domNode.textContent };
   }
 
   // 요소 노드 → { type, props, children }
@@ -27,18 +31,18 @@ export function domToVdom(domNode) {
     children.push(domToVdom(child));
   }
 
-  return { type, props, children };
+  return { nodeType: NodeType.ELEMENT, type, props, children };
 }
 
 /**
  * vdomToDom(vnode) — vDOM → 실제 DOM 생성
  *
- * 문자열이면 TextNode, 객체면 Element
+ * NodeType.TEXT면 TextNode, NodeType.ELEMENT면 Element
  */
 export function vdomToDom(vnode) {
-  // 문자열 → 텍스트 노드
-  if (typeof vnode === "string") {
-    return document.createTextNode(vnode);
+  // 텍스트 노드
+  if (vnode.nodeType === NodeType.TEXT) {
+    return document.createTextNode(vnode.value);
   }
 
   const el = document.createElement(vnode.type);
@@ -75,18 +79,18 @@ export function renderTo(container, vdom) {
 export function diff(oldVdom, newVdom, path = []) {
   const patches = [];
 
-  // 둘 다 문자열(텍스트 노드)
-  if (typeof oldVdom === "string" && typeof newVdom === "string") {
-    if (oldVdom !== newVdom) {
-      patches.push({ type: "TEXT", path, value: newVdom });
+  // 둘 다 텍스트 노드
+  if (oldVdom.nodeType === NodeType.TEXT && newVdom.nodeType === NodeType.TEXT) {
+    if (oldVdom.value !== newVdom.value) {
+      patches.push({ type: "TEXT", path, value: newVdom.value });
     }
     return patches;
   }
 
   // 타입이 다름: 텍스트↔요소, 또는 태그명 불일치
   if (
-    typeof oldVdom !== typeof newVdom ||
-    (typeof oldVdom === "object" && oldVdom.type !== newVdom.type)
+    oldVdom.nodeType !== newVdom.nodeType ||
+    (oldVdom.nodeType === NodeType.ELEMENT && oldVdom.type !== newVdom.type)
   ) {
     patches.push({ type: "REPLACE", path, newNode: newVdom });
     return patches;
