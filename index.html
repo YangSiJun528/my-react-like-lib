@@ -48,7 +48,8 @@
     </div>
 
     <script type="module">
-      import { domToVdom, renderTo, diff, applyPatches, createHistory } from "/src/lib.js";
+      import { domToVdom, renderTo, diff, applyPatches } from "/src/lib.js";
+      import { createHistory } from "/src/history.js";
 
       const realArea = document.getElementById("real-area");
       const testArea = document.getElementById("test-area");
