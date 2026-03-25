@@ -1,6 +1,6 @@
-import { NodeType } from "./constants.js";
+import { NodeType, PatchType } from "./constants.js";
 
-export { NodeType } from "./constants.js";
+export { NodeType, PatchType } from "./constants.js";
 
 /**
  * domToVdom(domNode) — 실제 DOM → vDOM 변환
@@ -82,7 +82,7 @@ export function diff(oldVdom, newVdom, path = []) {
   // 둘 다 텍스트 노드
   if (oldVdom.nodeType === NodeType.TEXT && newVdom.nodeType === NodeType.TEXT) {
     if (oldVdom.value !== newVdom.value) {
-      patches.push({ type: "TEXT", path, value: newVdom.value });
+      patches.push({ type: PatchType.TEXT, path, value: newVdom.value });
     }
     return patches;
   }
@@ -92,7 +92,7 @@ export function diff(oldVdom, newVdom, path = []) {
     oldVdom.nodeType !== newVdom.nodeType ||
     (oldVdom.nodeType === NodeType.ELEMENT && oldVdom.type !== newVdom.type)
   ) {
-    patches.push({ type: "REPLACE", path, newNode: newVdom });
+    patches.push({ type: PatchType.REPLACE, path, newNode: newVdom });
     return patches;
   }
 
@@ -118,7 +118,7 @@ export function diff(oldVdom, newVdom, path = []) {
   }
 
   if (hasChanges) {
-    patches.push({ type: "PROPS", path, props: propChanges });
+    patches.push({ type: PatchType.PROPS, path, props: propChanges });
   }
 
   // 자식 비교
@@ -128,10 +128,10 @@ export function diff(oldVdom, newVdom, path = []) {
 
     if (i >= oldVdom.children.length) {
       // old에 없고 new에 있음 → ADD
-      patches.push({ type: "ADD", path: childPath, newNode: newVdom.children[i] });
+      patches.push({ type: PatchType.ADD, path: childPath, newNode: newVdom.children[i] });
     } else if (i >= newVdom.children.length) {
       // old에 있고 new에 없음 → REMOVE
-      patches.push({ type: "REMOVE", path: childPath });
+      patches.push({ type: PatchType.REMOVE, path: childPath });
     } else {
       // 양쪽 다 있음 → 재귀 비교
       patches.push(...diff(oldVdom.children[i], newVdom.children[i], childPath));
@@ -150,14 +150,14 @@ export function diff(oldVdom, newVdom, path = []) {
 export function applyPatches(rootDom, patches) {
   // REMOVE를 역순(인덱스 큰 것부터)으로 정렬하기 위해 분리
   const removes = patches
-    .filter((p) => p.type === "REMOVE")
+    .filter((p) => p.type === PatchType.REMOVE)
     .sort((a, b) => {
       // path의 마지막 인덱스 기준 내림차순
       const lastA = a.path[a.path.length - 1];
       const lastB = b.path[b.path.length - 1];
       return lastB - lastA;
     });
-  const others = patches.filter((p) => p.type !== "REMOVE");
+  const others = patches.filter((p) => p.type !== PatchType.REMOVE);
 
   // REMOVE 이외 패치 먼저 적용
   for (const patch of others) {
@@ -173,7 +173,7 @@ export function applyPatches(rootDom, patches) {
 function applyPatch(rootDom, patch) {
   const { type, path } = patch;
 
-  if (type === "ADD") {
+  if (type === PatchType.ADD) {
     // 부모 노드 탐색 (path의 마지막 제외)
     const parentPath = path.slice(0, -1);
     let parent = rootDom;
@@ -191,12 +191,12 @@ function applyPatch(rootDom, patch) {
   }
 
   switch (type) {
-    case "REPLACE": {
+    case PatchType.REPLACE: {
       const parent = target.parentNode;
       parent.replaceChild(vdomToDom(patch.newNode), target);
       break;
     }
-    case "PROPS": {
+    case PatchType.PROPS: {
       for (const [key, value] of Object.entries(patch.props)) {
         if (value === null) {
           target.removeAttribute(key);
@@ -206,11 +206,11 @@ function applyPatch(rootDom, patch) {
       }
       break;
     }
-    case "TEXT": {
+    case PatchType.TEXT: {
       target.textContent = patch.value;
       break;
     }
-    case "REMOVE": {
+    case PatchType.REMOVE: {
       const parent = target.parentNode;
       parent.removeChild(target);
       break;
