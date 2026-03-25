@@ -136,3 +136,80 @@ export function diff(oldVdom, newVdom, path = []) {
 
   return patches;
 }
+
+/**
+ * applyPatches(rootDom, patches) — 패치를 실제 DOM에 적용
+ *
+ * path 배열로 대상 노드를 탐색하고, 타입별로 DOM 조작 수행.
+ * REMOVE 패치는 인덱스 시프트 방지를 위해 역순 적용.
+ */
+export function applyPatches(rootDom, patches) {
+  // REMOVE를 역순(인덱스 큰 것부터)으로 정렬하기 위해 분리
+  const removes = patches
+    .filter((p) => p.type === "REMOVE")
+    .sort((a, b) => {
+      // path의 마지막 인덱스 기준 내림차순
+      const lastA = a.path[a.path.length - 1];
+      const lastB = b.path[b.path.length - 1];
+      return lastB - lastA;
+    });
+  const others = patches.filter((p) => p.type !== "REMOVE");
+
+  // REMOVE 이외 패치 먼저 적용
+  for (const patch of others) {
+    applyPatch(rootDom, patch);
+  }
+
+  // REMOVE 패치 역순 적용
+  for (const patch of removes) {
+    applyPatch(rootDom, patch);
+  }
+}
+
+function applyPatch(rootDom, patch) {
+  const { type, path } = patch;
+
+  if (type === "ADD") {
+    // 부모 노드 탐색 (path의 마지막 제외)
+    const parentPath = path.slice(0, -1);
+    let parent = rootDom;
+    for (const i of parentPath) {
+      parent = parent.childNodes[i];
+    }
+    parent.appendChild(vdomToDom(patch.newNode));
+    return;
+  }
+
+  // 대상 노드 탐색
+  let target = rootDom;
+  for (const i of path) {
+    target = target.childNodes[i];
+  }
+
+  switch (type) {
+    case "REPLACE": {
+      const parent = target.parentNode;
+      parent.replaceChild(vdomToDom(patch.newNode), target);
+      break;
+    }
+    case "PROPS": {
+      for (const [key, value] of Object.entries(patch.props)) {
+        if (value === null) {
+          target.removeAttribute(key);
+        } else {
+          target.setAttribute(key, value);
+        }
+      }
+      break;
+    }
+    case "TEXT": {
+      target.textContent = patch.value;
+      break;
+    }
+    case "REMOVE": {
+      const parent = target.parentNode;
+      parent.removeChild(target);
+      break;
+    }
+  }
+}
