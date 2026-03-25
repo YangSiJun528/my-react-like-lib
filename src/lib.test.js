@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { domToVdom, vdomToDom, renderTo, diff, applyPatches, NodeType } from "./lib.js";
+import { domToVdom, vdomToDom, renderTo, diff, applyPatches, NodeType, PatchType } from "./lib.js";
 import { createHistory } from "./history.js";
 
 // ── 헬퍼: HTML 문자열 → DOM 요소 ──
@@ -251,7 +251,7 @@ describe("diff", () => {
 
     // Then
     expect(patches).toEqual([
-      { type: "TEXT", path: [], value: "world" },
+      { type: PatchType.TEXT, path: [], value: "world" },
     ]);
   });
 
@@ -278,7 +278,7 @@ describe("diff", () => {
 
     // Then
     expect(patches).toEqual([
-      { type: "REPLACE", path: [], newNode: newVdom },
+      { type: PatchType.REPLACE, path: [], newNode: newVdom },
     ]);
   });
 
@@ -292,7 +292,7 @@ describe("diff", () => {
 
     // Then
     expect(patches).toEqual([
-      { type: "REPLACE", path: [], newNode: newVdom },
+      { type: PatchType.REPLACE, path: [], newNode: newVdom },
     ]);
   });
 
@@ -307,7 +307,7 @@ describe("diff", () => {
 
     // Then
     expect(patches).toEqual([
-      { type: "PROPS", path: [], props: { class: "box" } },
+      { type: PatchType.PROPS, path: [], props: { class: "box" } },
     ]);
   });
 
@@ -321,7 +321,7 @@ describe("diff", () => {
 
     // Then
     expect(patches).toEqual([
-      { type: "PROPS", path: [], props: { class: "new" } },
+      { type: PatchType.PROPS, path: [], props: { class: "new" } },
     ]);
   });
 
@@ -335,7 +335,7 @@ describe("diff", () => {
 
     // Then
     expect(patches).toEqual([
-      { type: "PROPS", path: [], props: { id: null } },
+      { type: PatchType.PROPS, path: [], props: { id: null } },
     ]);
   });
 
@@ -364,7 +364,7 @@ describe("diff", () => {
 
     // Then
     expect(patches).toEqual([
-      { type: "ADD", path: [0], newNode: el("li", {}, [t("A")]) },
+      { type: PatchType.ADD, path: [0], newNode: el("li", {}, [t("A")]) },
     ]);
   });
 
@@ -384,7 +384,7 @@ describe("diff", () => {
 
     // Then
     expect(patches).toEqual([
-      { type: "REMOVE", path: [1] },
+      { type: PatchType.REMOVE, path: [1] },
     ]);
   });
 
@@ -403,7 +403,7 @@ describe("diff", () => {
 
     // Then
     expect(patches).toEqual([
-      { type: "TEXT", path: [0, 0], value: "Changed" },
+      { type: PatchType.TEXT, path: [0, 0], value: "Changed" },
     ]);
   });
 
@@ -440,10 +440,10 @@ describe("diff", () => {
     for (const patch of patches) {
       expect(patch.path.slice(0, 2)).toEqual([1, 3]);
     }
-    expect(patches).toContainEqual({ type: "PROPS", path: [1, 3], props: { class: "new" } });
-    expect(patches).toContainEqual({ type: "TEXT", path: [1, 3, 0, 0], value: "new" });
+    expect(patches).toContainEqual({ type: PatchType.PROPS, path: [1, 3], props: { class: "new" } });
+    expect(patches).toContainEqual({ type: PatchType.TEXT, path: [1, 3, 0, 0], value: "new" });
     expect(patches).toContainEqual({
-      type: "ADD", path: [1, 3, 1],
+      type: PatchType.ADD, path: [1, 3, 1],
       newNode: el("span", {}, [t("added")]),
     });
   });
@@ -475,25 +475,25 @@ describe("diff", () => {
 
     // Then
     const types = patches.map((p) => p.type);
-    expect(types).toContain("TEXT");
-    expect(types).toContain("REPLACE");
-    expect(types).toContain("PROPS");
-    expect(types).toContain("REMOVE");
+    expect(types).toContain(PatchType.TEXT);
+    expect(types).toContain(PatchType.REPLACE);
+    expect(types).toContain(PatchType.PROPS);
+    expect(types).toContain(PatchType.REMOVE);
 
     // TEXT: h1 텍스트 변경 (path: [0, 0])
-    expect(patches).toContainEqual({ type: "TEXT", path: [0, 0], value: "Changed!" });
+    expect(patches).toContainEqual({ type: PatchType.TEXT, path: [0, 0], value: "Changed!" });
 
     // REPLACE: p → span (path: [1])
     expect(patches).toContainEqual({
-      type: "REPLACE", path: [1],
+      type: PatchType.REPLACE, path: [1],
       newNode: el("span", {}, [t("New element")]),
     });
 
     // PROPS: ul에 class 추가 (path: [2])
-    expect(patches).toContainEqual({ type: "PROPS", path: [2], props: { class: "list" } });
+    expect(patches).toContainEqual({ type: PatchType.PROPS, path: [2], props: { class: "list" } });
 
     // REMOVE: ul의 세 번째 자식 삭제 (path: [2, 2])
-    expect(patches).toContainEqual({ type: "REMOVE", path: [2, 2] });
+    expect(patches).toContainEqual({ type: PatchType.REMOVE, path: [2, 2] });
   });
 });
 
@@ -504,7 +504,7 @@ describe("applyPatches", () => {
   it("TEXT 패치가 주어지면 대상 텍스트 노드의 내용을 변경한다", () => {
     // Given
     const dom = htmlToElement("<div><p>old</p></div>");
-    const patches = [{ type: "TEXT", path: [0, 0], value: "new" }];
+    const patches = [{ type: PatchType.TEXT, path: [0, 0], value: "new" }];
 
     // When
     applyPatches(dom, patches);
@@ -517,7 +517,7 @@ describe("applyPatches", () => {
     // Given
     const dom = htmlToElement("<div><p>old</p></div>");
     const patches = [{
-      type: "REPLACE", path: [0],
+      type: PatchType.REPLACE, path: [0],
       newNode: el("span", {}, [t("replaced")]),
     }];
 
@@ -532,7 +532,7 @@ describe("applyPatches", () => {
   it("PROPS 패치가 주어지면 속성을 추가/변경한다", () => {
     // Given
     const dom = htmlToElement('<div class="old"></div>');
-    const patches = [{ type: "PROPS", path: [], props: { class: "new", id: "main" } }];
+    const patches = [{ type: PatchType.PROPS, path: [], props: { class: "new", id: "main" } }];
 
     // When
     applyPatches(dom, patches);
@@ -545,7 +545,7 @@ describe("applyPatches", () => {
   it("PROPS 패치에서 null 값이 주어지면 해당 속성을 삭제한다", () => {
     // Given
     const dom = htmlToElement('<div class="box" id="main"></div>');
-    const patches = [{ type: "PROPS", path: [], props: { id: null } }];
+    const patches = [{ type: PatchType.PROPS, path: [], props: { id: null } }];
 
     // When
     applyPatches(dom, patches);
@@ -559,7 +559,7 @@ describe("applyPatches", () => {
     // Given
     const dom = htmlToElement("<ul><li>A</li></ul>");
     const patches = [{
-      type: "ADD", path: [1],
+      type: PatchType.ADD, path: [1],
       newNode: el("li", {}, [t("B")]),
     }];
 
@@ -574,7 +574,7 @@ describe("applyPatches", () => {
   it("REMOVE 패치가 주어지면 대상 자식 노드를 삭제한다", () => {
     // Given
     const dom = htmlToElement("<ul><li>A</li><li>B</li></ul>");
-    const patches = [{ type: "REMOVE", path: [1] }];
+    const patches = [{ type: PatchType.REMOVE, path: [1] }];
 
     // When
     applyPatches(dom, patches);
@@ -588,8 +588,8 @@ describe("applyPatches", () => {
     // Given
     const dom = htmlToElement("<ul><li>A</li><li>B</li><li>C</li><li>D</li></ul>");
     const patches = [
-      { type: "REMOVE", path: [1] },
-      { type: "REMOVE", path: [2] },
+      { type: PatchType.REMOVE, path: [1] },
+      { type: PatchType.REMOVE, path: [2] },
     ];
 
     // When
