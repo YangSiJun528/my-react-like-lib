@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { domToVdom, vdomToDom, renderTo, diff, applyPatches, createHistory } from "./lib.js";
+import { domToVdom, vdomToDom, renderTo, diff, applyPatches, NodeType } from "./lib.js";
+import { createHistory } from "./history.js";
 
 // ── 헬퍼: HTML 문자열 → DOM 요소 ──
 function htmlToElement(html) {
@@ -8,11 +9,19 @@ function htmlToElement(html) {
   return template.content.firstChild;
 }
 
+// ── 헬퍼: vDOM 노드 생성 ──
+function t(value) {
+  return { nodeType: NodeType.TEXT, value };
+}
+function el(type, props, children) {
+  return { nodeType: NodeType.ELEMENT, type, props, children };
+}
+
 // ═══════════════════════════════════════════
 // domToVdom 테스트
 // ═══════════════════════════════════════════
 describe("domToVdom", () => {
-  it("텍스트 노드가 주어지면 문자열을 반환한다", () => {
+  it("텍스트 노드가 주어지면 텍스트 vDOM을 반환한다", () => {
     // Given
     const textNode = document.createTextNode("hello");
 
@@ -20,26 +29,26 @@ describe("domToVdom", () => {
     const result = domToVdom(textNode);
 
     // Then
-    expect(result).toBe("hello");
+    expect(result).toEqual(t("hello"));
   });
 
   it("자식이 없는 요소가 주어지면 빈 children 배열을 가진 vDOM 객체를 반환한다", () => {
     // Given
-    const el = htmlToElement("<div></div>");
+    const elem = htmlToElement("<div></div>");
 
     // When
-    const result = domToVdom(el);
+    const result = domToVdom(elem);
 
     // Then
-    expect(result).toEqual({ type: "div", props: {}, children: [] });
+    expect(result).toEqual(el("div", {}, []));
   });
 
   it("속성이 있는 요소가 주어지면 props 객체에 속성을 포함한다", () => {
     // Given
-    const el = htmlToElement('<p style="color: blue" class="text"></p>');
+    const elem = htmlToElement('<p style="color: blue" class="text"></p>');
 
     // When
-    const result = domToVdom(el);
+    const result = domToVdom(elem);
 
     // Then
     expect(result.props).toEqual({ style: "color: blue", class: "text" });
@@ -47,66 +56,58 @@ describe("domToVdom", () => {
 
   it("중첩된 자식 요소가 주어지면 재귀적으로 변환한다", () => {
     // Given
-    const el = htmlToElement("<ul><li>A</li><li>B</li></ul>");
+    const elem = htmlToElement("<ul><li>A</li><li>B</li></ul>");
 
     // When
-    const result = domToVdom(el);
+    const result = domToVdom(elem);
 
     // Then
-    expect(result).toEqual({
-      type: "ul",
-      props: {},
-      children: [
-        { type: "li", props: {}, children: ["A"] },
-        { type: "li", props: {}, children: ["B"] },
-      ],
-    });
+    expect(result).toEqual(
+      el("ul", {}, [
+        el("li", {}, [t("A")]),
+        el("li", {}, [t("B")]),
+      ]),
+    );
   });
 
   it("태그 사이에 공백 텍스트 노드가 있으면 필터링한다", () => {
     // Given — HTML의 줄바꿈/들여쓰기가 공백 텍스트 노드를 생성
-    const el = htmlToElement(`<div>
+    const elem = htmlToElement(`<div>
       <span>hi</span>
     </div>`);
 
     // When
-    const result = domToVdom(el);
+    const result = domToVdom(elem);
 
     // Then
     expect(result.children).toEqual([
-      { type: "span", props: {}, children: ["hi"] },
+      el("span", {}, [t("hi")]),
     ]);
   });
 
   it("여러 레벨로 중첩된 복잡한 구조가 주어지면 전체를 올바르게 변환한다", () => {
     // Given
-    const el = htmlToElement(`<div>
+    const elem = htmlToElement(`<div>
       <h1>Hello</h1>
       <p style="color: blue">Virtual DOM Demo</p>
       <ul><li>Item 1</li><li>Item 2</li><li>Item 3</li></ul>
     </div>`);
 
     // When
-    const result = domToVdom(el);
+    const result = domToVdom(elem);
 
     // Then
-    expect(result).toEqual({
-      type: "div",
-      props: {},
-      children: [
-        { type: "h1", props: {}, children: ["Hello"] },
-        { type: "p", props: { style: "color: blue" }, children: ["Virtual DOM Demo"] },
-        {
-          type: "ul",
-          props: {},
-          children: [
-            { type: "li", props: {}, children: ["Item 1"] },
-            { type: "li", props: {}, children: ["Item 2"] },
-            { type: "li", props: {}, children: ["Item 3"] },
-          ],
-        },
-      ],
-    });
+    expect(result).toEqual(
+      el("div", {}, [
+        el("h1", {}, [t("Hello")]),
+        el("p", { style: "color: blue" }, [t("Virtual DOM Demo")]),
+        el("ul", {}, [
+          el("li", {}, [t("Item 1")]),
+          el("li", {}, [t("Item 2")]),
+          el("li", {}, [t("Item 3")]),
+        ]),
+      ]),
+    );
   });
 });
 
@@ -114,9 +115,9 @@ describe("domToVdom", () => {
 // vdomToDom 테스트
 // ═══════════════════════════════════════════
 describe("vdomToDom", () => {
-  it("문자열 vnode가 주어지면 텍스트 노드를 생성한다", () => {
+  it("텍스트 vnode가 주어지면 텍스트 노드를 생성한다", () => {
     // Given
-    const vnode = "hello";
+    const vnode = t("hello");
 
     // When
     const node = vdomToDom(vnode);
@@ -128,7 +129,7 @@ describe("vdomToDom", () => {
 
   it("빈 vDOM 객체가 주어지면 자식 없는 요소를 생성한다", () => {
     // Given
-    const vnode = { type: "div", props: {}, children: [] };
+    const vnode = el("div", {}, []);
 
     // When
     const node = vdomToDom(vnode);
@@ -140,11 +141,7 @@ describe("vdomToDom", () => {
 
   it("props가 있는 vDOM 객체가 주어지면 요소에 속성을 설정한다", () => {
     // Given
-    const vnode = {
-      type: "p",
-      props: { style: "color: red", class: "text" },
-      children: [],
-    };
+    const vnode = el("p", { style: "color: red", class: "text" }, []);
 
     // When
     const node = vdomToDom(vnode);
@@ -156,14 +153,10 @@ describe("vdomToDom", () => {
 
   it("자식이 있는 vDOM 객체가 주어지면 재귀적으로 DOM을 생성한다", () => {
     // Given
-    const vnode = {
-      type: "ul",
-      props: {},
-      children: [
-        { type: "li", props: {}, children: ["A"] },
-        { type: "li", props: {}, children: ["B"] },
-      ],
-    };
+    const vnode = el("ul", {}, [
+      el("li", {}, [t("A")]),
+      el("li", {}, [t("B")]),
+    ]);
 
     // When
     const node = vdomToDom(vnode);
@@ -183,7 +176,7 @@ describe("renderTo", () => {
     // Given
     const container = document.createElement("div");
     container.innerHTML = "<p>old content</p>";
-    const vdom = { type: "span", props: {}, children: ["new"] };
+    const vdom = el("span", {}, [t("new")]);
 
     // When
     renderTo(container, vdom);
@@ -218,10 +211,10 @@ describe("라운드트립", () => {
 
   it("단순 텍스트 요소가 주어지면 라운드트립 후에도 동일한 vDOM을 얻는다", () => {
     // Given
-    const el = htmlToElement("<span>hello</span>");
+    const elem = htmlToElement("<span>hello</span>");
 
     // When
-    const vdom = domToVdom(el);
+    const vdom = domToVdom(elem);
     const rebuilt = vdomToDom(vdom);
     const vdomAfter = domToVdom(rebuilt);
 
@@ -231,10 +224,10 @@ describe("라운드트립", () => {
 
   it("다중 속성 요소가 주어지면 라운드트립 후에도 동일한 vDOM을 얻는다", () => {
     // Given
-    const el = htmlToElement('<input type="text" placeholder="name" class="field">');
+    const elem = htmlToElement('<input type="text" placeholder="name" class="field">');
 
     // When
-    const vdom = domToVdom(el);
+    const vdom = domToVdom(elem);
     const rebuilt = vdomToDom(vdom);
     const vdomAfter = domToVdom(rebuilt);
 
@@ -250,8 +243,8 @@ describe("diff", () => {
   // ── TEXT 패치 ──
   it("양쪽 텍스트 노드의 내용이 다르면 TEXT 패치를 생성한다", () => {
     // Given
-    const oldVdom = "hello";
-    const newVdom = "world";
+    const oldVdom = t("hello");
+    const newVdom = t("world");
 
     // When
     const patches = diff(oldVdom, newVdom);
@@ -264,8 +257,8 @@ describe("diff", () => {
 
   it("양쪽 텍스트 노드의 내용이 같으면 빈 패치 목록을 반환한다", () => {
     // Given
-    const oldVdom = "same";
-    const newVdom = "same";
+    const oldVdom = t("same");
+    const newVdom = t("same");
 
     // When
     const patches = diff(oldVdom, newVdom);
@@ -277,8 +270,8 @@ describe("diff", () => {
   // ── REPLACE 패치 ──
   it("텍스트 노드와 요소 노드가 주어지면 REPLACE 패치를 생성한다", () => {
     // Given
-    const oldVdom = "text";
-    const newVdom = { type: "span", props: {}, children: ["text"] };
+    const oldVdom = t("text");
+    const newVdom = el("span", {}, [t("text")]);
 
     // When
     const patches = diff(oldVdom, newVdom);
@@ -291,8 +284,8 @@ describe("diff", () => {
 
   it("태그명이 다른 요소가 주어지면 REPLACE 패치를 생성한다", () => {
     // Given
-    const oldVdom = { type: "p", props: {}, children: ["text"] };
-    const newVdom = { type: "span", props: {}, children: ["text"] };
+    const oldVdom = el("p", {}, [t("text")]);
+    const newVdom = el("span", {}, [t("text")]);
 
     // When
     const patches = diff(oldVdom, newVdom);
@@ -306,8 +299,8 @@ describe("diff", () => {
   // ── PROPS 패치 ──
   it("속성이 추가되면 PROPS 패치에 새 값을 포함한다", () => {
     // Given
-    const oldVdom = { type: "div", props: {}, children: [] };
-    const newVdom = { type: "div", props: { class: "box" }, children: [] };
+    const oldVdom = el("div", {}, []);
+    const newVdom = el("div", { class: "box" }, []);
 
     // When
     const patches = diff(oldVdom, newVdom);
@@ -320,8 +313,8 @@ describe("diff", () => {
 
   it("속성이 변경되면 PROPS 패치에 변경된 값을 포함한다", () => {
     // Given
-    const oldVdom = { type: "div", props: { class: "old" }, children: [] };
-    const newVdom = { type: "div", props: { class: "new" }, children: [] };
+    const oldVdom = el("div", { class: "old" }, []);
+    const newVdom = el("div", { class: "new" }, []);
 
     // When
     const patches = diff(oldVdom, newVdom);
@@ -334,8 +327,8 @@ describe("diff", () => {
 
   it("속성이 삭제되면 PROPS 패치에 null 값을 포함한다", () => {
     // Given
-    const oldVdom = { type: "div", props: { class: "box", id: "main" }, children: [] };
-    const newVdom = { type: "div", props: { class: "box" }, children: [] };
+    const oldVdom = el("div", { class: "box", id: "main" }, []);
+    const newVdom = el("div", { class: "box" }, []);
 
     // When
     const patches = diff(oldVdom, newVdom);
@@ -348,8 +341,8 @@ describe("diff", () => {
 
   it("속성이 동일하면 PROPS 패치를 생성하지 않는다", () => {
     // Given
-    const oldVdom = { type: "div", props: { class: "box" }, children: [] };
-    const newVdom = { type: "div", props: { class: "box" }, children: [] };
+    const oldVdom = el("div", { class: "box" }, []);
+    const newVdom = el("div", { class: "box" }, []);
 
     // When
     const patches = diff(oldVdom, newVdom);
@@ -361,36 +354,30 @@ describe("diff", () => {
   // ── ADD 패치 ──
   it("new에만 자식이 있으면 ADD 패치를 생성한다", () => {
     // Given
-    const oldVdom = { type: "ul", props: {}, children: [] };
-    const newVdom = {
-      type: "ul", props: {}, children: [
-        { type: "li", props: {}, children: ["A"] },
-      ],
-    };
+    const oldVdom = el("ul", {}, []);
+    const newVdom = el("ul", {}, [
+      el("li", {}, [t("A")]),
+    ]);
 
     // When
     const patches = diff(oldVdom, newVdom);
 
     // Then
     expect(patches).toEqual([
-      { type: "ADD", path: [0], newNode: { type: "li", props: {}, children: ["A"] } },
+      { type: "ADD", path: [0], newNode: el("li", {}, [t("A")]) },
     ]);
   });
 
   // ── REMOVE 패치 ──
   it("old에만 자식이 있으면 REMOVE 패치를 생성한다", () => {
     // Given
-    const oldVdom = {
-      type: "ul", props: {}, children: [
-        { type: "li", props: {}, children: ["A"] },
-        { type: "li", props: {}, children: ["B"] },
-      ],
-    };
-    const newVdom = {
-      type: "ul", props: {}, children: [
-        { type: "li", props: {}, children: ["A"] },
-      ],
-    };
+    const oldVdom = el("ul", {}, [
+      el("li", {}, [t("A")]),
+      el("li", {}, [t("B")]),
+    ]);
+    const newVdom = el("ul", {}, [
+      el("li", {}, [t("A")]),
+    ]);
 
     // When
     const patches = diff(oldVdom, newVdom);
@@ -404,16 +391,12 @@ describe("diff", () => {
   // ── 자식 재귀 비교 ──
   it("중첩된 자식의 텍스트가 변경되면 올바른 path로 패치를 생성한다", () => {
     // Given
-    const oldVdom = {
-      type: "div", props: {}, children: [
-        { type: "h1", props: {}, children: ["Hello"] },
-      ],
-    };
-    const newVdom = {
-      type: "div", props: {}, children: [
-        { type: "h1", props: {}, children: ["Changed"] },
-      ],
-    };
+    const oldVdom = el("div", {}, [
+      el("h1", {}, [t("Hello")]),
+    ]);
+    const newVdom = el("div", {}, [
+      el("h1", {}, [t("Changed")]),
+    ]);
 
     // When
     const patches = diff(oldVdom, newVdom);
@@ -427,11 +410,9 @@ describe("diff", () => {
   // ── 동일한 vDOM ──
   it("동일한 vDOM이 주어지면 빈 패치 목록을 반환한다", () => {
     // Given
-    const vdom = {
-      type: "div", props: { class: "box" }, children: [
-        { type: "p", props: {}, children: ["hello"] },
-      ],
-    };
+    const vdom = el("div", { class: "box" }, [
+      el("p", {}, [t("hello")]),
+    ]);
 
     // When
     const patches = diff(vdom, vdom);
@@ -443,17 +424,13 @@ describe("diff", () => {
   // ── path 전달 ──
   it("초기 path가 주어지면 모든 패치 경로에 접두사로 포함된다", () => {
     // Given
-    const oldVdom = {
-      type: "div", props: {}, children: [
-        { type: "p", props: {}, children: ["old"] },
-      ],
-    };
-    const newVdom = {
-      type: "div", props: { class: "new" }, children: [
-        { type: "p", props: {}, children: ["new"] },
-        { type: "span", props: {}, children: ["added"] },
-      ],
-    };
+    const oldVdom = el("div", {}, [
+      el("p", {}, [t("old")]),
+    ]);
+    const newVdom = el("div", { class: "new" }, [
+      el("p", {}, [t("new")]),
+      el("span", {}, [t("added")]),
+    ]);
     const basePath = [1, 3];
 
     // When
@@ -467,39 +444,31 @@ describe("diff", () => {
     expect(patches).toContainEqual({ type: "TEXT", path: [1, 3, 0, 0], value: "new" });
     expect(patches).toContainEqual({
       type: "ADD", path: [1, 3, 1],
-      newNode: { type: "span", props: {}, children: ["added"] },
+      newNode: el("span", {}, [t("added")]),
     });
   });
 
   // ── 복합 시나리오: 계획서의 Phase 2 검증 케이스 ──
   it("여러 종류의 변경이 동시에 있으면 모든 패치 타입을 올바르게 생성한다", () => {
     // Given — Phase 2 계획서의 검증 시나리오
-    const oldVdom = {
-      type: "div", props: {}, children: [
-        { type: "h1", props: {}, children: ["Hello"] },
-        { type: "p", props: { style: "color: blue" }, children: ["Virtual DOM Demo"] },
-        {
-          type: "ul", props: {}, children: [
-            { type: "li", props: {}, children: ["Item 1"] },
-            { type: "li", props: {}, children: ["Item 2"] },
-            { type: "li", props: {}, children: ["Item 3"] },
-          ],
-        },
-      ],
-    };
-    const newVdom = {
-      type: "div", props: {}, children: [
-        { type: "h1", props: {}, children: ["Changed!"] },          // TEXT 변경
-        { type: "span", props: {}, children: ["New element"] },     // REPLACE (p→span)
-        {
-          type: "ul", props: { class: "list" }, children: [         // PROPS 변경
-            { type: "li", props: {}, children: ["Item 1"] },
-            { type: "li", props: {}, children: ["Item 3"] },        // Item 2→Item 3 (TEXT)
-            // Item 3 삭제 → REMOVE
-          ],
-        },
-      ],
-    };
+    const oldVdom = el("div", {}, [
+      el("h1", {}, [t("Hello")]),
+      el("p", { style: "color: blue" }, [t("Virtual DOM Demo")]),
+      el("ul", {}, [
+        el("li", {}, [t("Item 1")]),
+        el("li", {}, [t("Item 2")]),
+        el("li", {}, [t("Item 3")]),
+      ]),
+    ]);
+    const newVdom = el("div", {}, [
+      el("h1", {}, [t("Changed!")]),                                // TEXT 변경
+      el("span", {}, [t("New element")]),                           // REPLACE (p→span)
+      el("ul", { class: "list" }, [                                 // PROPS 변경
+        el("li", {}, [t("Item 1")]),
+        el("li", {}, [t("Item 3")]),                                // Item 2→Item 3 (TEXT)
+        // Item 3 삭제 → REMOVE
+      ]),
+    ]);
 
     // When
     const patches = diff(oldVdom, newVdom);
@@ -517,7 +486,7 @@ describe("diff", () => {
     // REPLACE: p → span (path: [1])
     expect(patches).toContainEqual({
       type: "REPLACE", path: [1],
-      newNode: { type: "span", props: {}, children: ["New element"] },
+      newNode: el("span", {}, [t("New element")]),
     });
 
     // PROPS: ul에 class 추가 (path: [2])
@@ -549,7 +518,7 @@ describe("applyPatches", () => {
     const dom = htmlToElement("<div><p>old</p></div>");
     const patches = [{
       type: "REPLACE", path: [0],
-      newNode: { type: "span", props: {}, children: ["replaced"] },
+      newNode: el("span", {}, [t("replaced")]),
     }];
 
     // When
@@ -591,7 +560,7 @@ describe("applyPatches", () => {
     const dom = htmlToElement("<ul><li>A</li></ul>");
     const patches = [{
       type: "ADD", path: [1],
-      newNode: { type: "li", props: {}, children: ["B"] },
+      newNode: el("li", {}, [t("B")]),
     }];
 
     // When
@@ -634,31 +603,23 @@ describe("applyPatches", () => {
 
   it("diff 결과를 applyPatches에 적용하면 DOM이 newVdom과 동일해진다", () => {
     // Given
-    const oldVdom = {
-      type: "div", props: {}, children: [
-        { type: "h1", props: {}, children: ["Hello"] },
-        { type: "p", props: { style: "color: blue" }, children: ["Demo"] },
-        {
-          type: "ul", props: {}, children: [
-            { type: "li", props: {}, children: ["Item 1"] },
-            { type: "li", props: {}, children: ["Item 2"] },
-            { type: "li", props: {}, children: ["Item 3"] },
-          ],
-        },
-      ],
-    };
-    const newVdom = {
-      type: "div", props: {}, children: [
-        { type: "h1", props: {}, children: ["Changed!"] },
-        { type: "span", props: {}, children: ["New element"] },
-        {
-          type: "ul", props: { class: "list" }, children: [
-            { type: "li", props: {}, children: ["Item 1"] },
-            { type: "li", props: {}, children: ["Item 3"] },
-          ],
-        },
-      ],
-    };
+    const oldVdom = el("div", {}, [
+      el("h1", {}, [t("Hello")]),
+      el("p", { style: "color: blue" }, [t("Demo")]),
+      el("ul", {}, [
+        el("li", {}, [t("Item 1")]),
+        el("li", {}, [t("Item 2")]),
+        el("li", {}, [t("Item 3")]),
+      ]),
+    ]);
+    const newVdom = el("div", {}, [
+      el("h1", {}, [t("Changed!")]),
+      el("span", {}, [t("New element")]),
+      el("ul", { class: "list" }, [
+        el("li", {}, [t("Item 1")]),
+        el("li", {}, [t("Item 3")]),
+      ]),
+    ]);
     const dom = vdomToDom(oldVdom);
     const patches = diff(oldVdom, newVdom);
 
@@ -676,7 +637,7 @@ describe("applyPatches", () => {
 describe("createHistory", () => {
   it("초기 vdom이 주어지면 current로 해당 상태를 반환한다", () => {
     // Given
-    const initial = { type: "div", props: {}, children: ["v1"] };
+    const initial = el("div", {}, [t("v1")]);
 
     // When
     const h = createHistory(initial);
@@ -687,8 +648,8 @@ describe("createHistory", () => {
 
   it("push로 상태를 추가하면 current가 새 상태를 반환한다", () => {
     // Given
-    const h = createHistory({ type: "div", props: {}, children: ["v1"] });
-    const v2 = { type: "div", props: {}, children: ["v2"] };
+    const h = createHistory(el("div", {}, [t("v1")]));
+    const v2 = el("div", {}, [t("v2")]);
 
     // When
     h.push(v2);
@@ -699,8 +660,8 @@ describe("createHistory", () => {
 
   it("back을 호출하면 이전 상태를 반환한다", () => {
     // Given
-    const v1 = { type: "div", props: {}, children: ["v1"] };
-    const v2 = { type: "div", props: {}, children: ["v2"] };
+    const v1 = el("div", {}, [t("v1")]);
+    const v2 = el("div", {}, [t("v2")]);
     const h = createHistory(v1);
     h.push(v2);
 
@@ -714,8 +675,8 @@ describe("createHistory", () => {
 
   it("forward를 호출하면 다음 상태를 반환한다", () => {
     // Given
-    const v1 = { type: "div", props: {}, children: ["v1"] };
-    const v2 = { type: "div", props: {}, children: ["v2"] };
+    const v1 = el("div", {}, [t("v1")]);
+    const v2 = el("div", {}, [t("v2")]);
     const h = createHistory(v1);
     h.push(v2);
     h.back();
@@ -730,7 +691,7 @@ describe("createHistory", () => {
 
   it("첫 번째 상태에서 back을 호출하면 현재 상태를 유지한다", () => {
     // Given
-    const v1 = { type: "div", props: {}, children: ["v1"] };
+    const v1 = el("div", {}, [t("v1")]);
     const h = createHistory(v1);
 
     // When
@@ -742,7 +703,7 @@ describe("createHistory", () => {
 
   it("마지막 상태에서 forward를 호출하면 현재 상태를 유지한다", () => {
     // Given
-    const v1 = { type: "div", props: {}, children: ["v1"] };
+    const v1 = el("div", {}, [t("v1")]);
     const h = createHistory(v1);
 
     // When
@@ -754,13 +715,13 @@ describe("createHistory", () => {
 
   it("canBack은 이전 상태가 있을 때만 true를 반환한다", () => {
     // Given
-    const h = createHistory({ type: "div", props: {}, children: ["v1"] });
+    const h = createHistory(el("div", {}, [t("v1")]));
 
     // Then
     expect(h.canBack()).toBe(false);
 
     // When
-    h.push({ type: "div", props: {}, children: ["v2"] });
+    h.push(el("div", {}, [t("v2")]));
 
     // Then
     expect(h.canBack()).toBe(true);
@@ -768,8 +729,8 @@ describe("createHistory", () => {
 
   it("canForward는 다음 상태가 있을 때만 true를 반환한다", () => {
     // Given
-    const h = createHistory({ type: "div", props: {}, children: ["v1"] });
-    h.push({ type: "div", props: {}, children: ["v2"] });
+    const h = createHistory(el("div", {}, [t("v1")]));
+    h.push(el("div", {}, [t("v2")]));
 
     // Then — 마지막 상태이므로 false
     expect(h.canForward()).toBe(false);
@@ -783,10 +744,10 @@ describe("createHistory", () => {
 
   it("히스토리 중간에서 push하면 이후 상태를 잘라내고 새 상태를 추가한다", () => {
     // Given
-    const v1 = { type: "div", props: {}, children: ["v1"] };
-    const v2 = { type: "div", props: {}, children: ["v2"] };
-    const v3 = { type: "div", props: {}, children: ["v3"] };
-    const v4 = { type: "div", props: {}, children: ["v4"] };
+    const v1 = el("div", {}, [t("v1")]);
+    const v2 = el("div", {}, [t("v2")]);
+    const v3 = el("div", {}, [t("v3")]);
+    const v4 = el("div", {}, [t("v4")]);
     const h = createHistory(v1);
     h.push(v2);
     h.push(v3);
