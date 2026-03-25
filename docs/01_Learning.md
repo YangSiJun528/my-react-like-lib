@@ -1,27 +1,32 @@
-> https://jungle-lms.krafton.com/learning/75
+# 프로젝트 구현을 위한 자료 조사 과정
 
-# 프로젝트 구현을 위한 배경지식
+> 프로젝트 구현을 위해 어떤 구체적으로 어떤 전략을 사용하는게 좋을지 자료 조사를 합니다.
 
-## 브라우저에서 DOM을 다루는 방법(Document, Window)
+> 주로 조사한 내용을 어떻게 구현하고, 검증 가능한지에 대한 자료를 정리합니다.
 
-## 실제 DOM의 변화를 감지 하기 위한 브라우저 API
+## (Bulk?) 렌더링 구현
 
-## 실제 DOM이 느린 이유
+> `vDOM` -> `DOM` 으로 반영하는 로직을 어떻게 구현할 수 있을지
 
-### Reflow/ Repaint 관점
+### 렌더링 성능, 프레임 테스트 방법 - Chrome Devtools 사용법
 
-## Virtual DOM
+- [런타임 성능 분석 | Chrome DevTools](https://developer.chrome.com/docs/devtools/performance?hl=ko)
 
-### 구조
+### 렌더링 시 무엇을 사용해야 하나요?
 
-### 필요한 이유
+- [requestAnimationFrame()을 사용하세요.](https://stackoverflow.com/a/38709924)
 
-## Diff 알고리즘
 
-### 동작 방식
+## 구현에 참고할만한 다른 구현 예시 
 
-### 최소 변경을 찾기 위한 5가지 핵심 케이스
+실제 기능만큼 복잡하지 않으면서 필수 기능을 흉내내거나 단순하게 구현된 라이브러리를 사용
 
-### 실제 DOM에 반영 방법
+- https://youtu.be/wakCXia3CEA?si=xW4FZep3YSOcw_73
+- https://vanjs.org/about#source-guide
+- https://github.com/YangSiJun528/forked-2023-FE-with-no-framework
 
-## React에서 실제 DOM을 변경할때, Virtual DOM과 Diff 알고리즘의 동작 방식
+## 컴포넌트는 어떻게?
+
+VanJS 처럼 코드? 기반으로 처리
+
+## 

@@ -5,9 +5,23 @@
 
 # 추가
 
+AI 말고 궁금해져서 따로 찾아본 직접 쓴 자료
+
 [[Jungle My Note | W04] React 구현을 위한 학습자료.md](https://gist.github.com/YangSiJun528/68e39f4fbb9b64b06e1df78bb8c3342a)의 내용도 참고하면 좋습니다.
 
-# 프로젝트 구현을 위한 배경지식
+### 리엑트는 빠른가?
+
+> React가 DOM 보다 빠르다는건 잘못된 사실이에요. 사실은: 유지보수 가능한 어플리케이션을 만드는것을 도와주고 그리고 대부분의 경우에 ‘충분히 빠르다’
+
+[[번역] 리액트에 대해서 그 누구도 제대로 설명하기 어려운 것 – 왜 Virtual DOM 인가? | VELOPERT.LOG](https://archive.velopert.com/3236.html)
+
+### 브라우저는 렌더링을 언제 하는가?
+
+DOM Tree + CSS Tree => Render Tree 이고, 브라우저는 Render Tree를 사용해서 렌더링을 한다.
+
+
+
+# 프로젝트 구현을 위한 배경지식 - 아래는 AI 답변
 
 ## 브라우저에서 DOM을 다루는 방법(Document, Window)
 
@@ -46,7 +60,19 @@ observer.observe(document.body, { childList: true, subtree: true });
 
 DOM을 10번 수정하면 최악의 경우 10번의 Reflow가 발생할 수 있다. 이것이 DOM 직접 조작이 느린 핵심 이유이며, **변경을 모아서 한 번에 반영**하려는 동기가 된다.
 
-> 결국 실제로 DOM이 느리다기보다는 렌더링이 발생하기 때문에 느린 것.
+> DOM 조작 자체보다, 그로 인해 발생하는 layout과 paint 비용이 더 크다고 볼 수 있습니다.      
+> https://web.dev/articles/rendering-performance   
+>
+> vDOM은 불필요한 DOM 변경을 줄이는 역할을 하지만,    
+> 브라우저는 이미 프레임 단위로 렌더링을 수행하기 때문에 단순히 렌더링 횟수를 줄이는 것만으로는 큰 성능 향상을 보장하지는 않습니다.    
+>  
+> 다만 DOM 변경이 많아질수록 layout 영향 범위와 계산 비용이 증가할 수 있기 때문에,    
+> vDOM은 이러한 불필요한 변경을 줄여 결과적으로 성능 안정성에 기여할 수 있습니다. (하지만 극한? 최적화를 하는 경우 대게 DOM 직접 조작이 더 높은 성능을 보여줍니다.)   
+> React의 가장 큰 장점은 선언적인 UI(UI = f(state)를 통해 상태 기반으로 UI를 관리할 수 있다는 점입니다.
+> 
+> 위와는 별개로,   
+>  https://web.dev/articles/avoid-large-complex-layouts-and-layout-thrashing    
+> 브라우저는 프레임 단위로 렌더링을 수행하며, 렌더링 작업이 프레임 예산(약 16ms)을 초과하면 프레임 드랍이 발생할 수 있습니다.
 
 ## Virtual DOM
 
