@@ -1,9 +1,7 @@
-import { NodeType, PatchType } from "./constants.js";
-import { textNode, elementNode } from "./vnode.js";
+import { NodeType, PatchType, textNode, elementNode } from "./constants.js";
 
 // lib만 봐도 동작해야해서 export를 써서 공개
-export { NodeType, PatchType } from "./constants.js";
-export { textNode, elementNode } from "./vnode.js";
+export { NodeType, PatchType, textNode, elementNode } from "./constants.js";
 
 /**
  * domToVdom(domNode) — 실제 DOM → vDOM 변환
