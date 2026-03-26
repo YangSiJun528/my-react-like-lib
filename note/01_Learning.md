@@ -25,6 +25,13 @@
 - https://vanjs.org/about#source-guide
 - https://github.com/YangSiJun528/forked-2023-FE-with-no-framework
 
+## Proxy와 Reflect
+
+- [Proxy and Reflect](https://javascript.info/proxy)
+- `Reflect`는 Proxy 트랩 안에서 원래 객체의 기본 동작을 위임할 때 사용
+- 현재 `tags` 구현처럼 원래 객체에 위임할 필요 없이 항상 새 값을 반환하는 경우에는 `Reflect` 불필요
+- VanJS도 동일하게 `Reflect` 없이 Proxy 사용
+
 ## 컴포넌트는 어떻게?
 
 VanJS 처럼 코드? 기반으로 처리
