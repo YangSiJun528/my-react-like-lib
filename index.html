@@ -1,167 +1,87 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Mini React</title>
-    <style>
-      body { font-family: sans-serif; padding: 20px; }
-      .toolbar { margin-bottom: 16px; display: flex; gap: 8px; }
-      .toolbar button {
-        padding: 6px 16px;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-        background: #fff;
-        cursor: pointer;
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TODO List</title>
+  <style>
+    body { font-family: sans-serif; max-width: 480px; margin: 40px auto; padding: 0 16px; }
+    ul { padding: 0; list-style: none; }
+    li { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="module">
+    import { tags, render, diff, applyPatches } from './src/lib.js';
+    const { div, h1, input, button, ul, li, span } = tags;
+
+    const container = document.getElementById('root');
+    let state = { todos: [], nextId: 1, inputValue: '' };
+    let currentVNode = null;
+
+    function view(s) {
+      return div(
+        h1('TODO'),
+        div(
+          input({
+            value: s.inputValue,
+            onInput: e => { state.inputValue = e.target.value; },
+            onKeydown: e => { if (e.key === 'Enter') addTodo(); },
+            placeholder: '할 일을 입력하세요'
+          }),
+          button({ onClick: addTodo }, 'Add')
+        ),
+        ul(
+          ...s.todos.map(todo =>
+            li({ key: String(todo.id) },
+              span({
+                onClick: () => toggle(todo.id),
+                style: {
+                  cursor: 'pointer',
+                  flex: '1',
+                  textDecoration: todo.done ? 'line-through' : 'none',
+                  color: todo.done ? '#999' : '#000'
+                }
+              }, todo.text),
+              button({ onClick: () => remove(todo.id) }, '✕')
+            )
+          )
+        )
+      );
+    }
+
+    function update() {
+      const newVNode = view(state);
+      if (!currentVNode) {
+        render(newVNode, container);
+      } else {
+        applyPatches(container.firstChild, diff(currentVNode, newVNode));
       }
-      .toolbar button:disabled { opacity: 0.4; cursor: default; }
-      .toolbar button:not(:disabled):hover { background: #f0f0f0; }
-      .container { display: flex; gap: 40px; }
-      .panel-wrapper { flex: 1; }
-      .panel-wrapper h2 { color: #555; font-size: 14px; }
-      .panel { border: 1px solid #ccc; padding: 16px; border-radius: 8px; min-height: 120px; }
-      .history-section { margin-top: 32px; }
-      .history-section h2 { color: #555; font-size: 14px; }
-      .history-list { list-style: none; padding: 0; margin: 0; }
-      .history-item { border: 1px solid #ddd; border-radius: 6px; margin-bottom: 4px; overflow: hidden; }
-      .history-item.active { border-color: #4a90d9; }
-      .history-summary {
-        display: flex; align-items: center; gap: 8px;
-        padding: 8px 12px; cursor: pointer; background: #fafafa;
-        user-select: none;
-      }
-      .history-item.active .history-summary { background: #e8f0fe; font-weight: bold; }
-      .history-summary .arrow { transition: transform 0.2s; font-size: 10px; }
-      .history-item[open] .history-summary .arrow { transform: rotate(90deg); }
-      .history-snapshot {
-        padding: 8px 12px; background: #f5f5f5; border-top: 1px solid #eee;
-        max-height: 300px; overflow: auto;
-      }
-      .history-snapshot pre {
-        margin: 0; font-size: 12px; line-height: 1.4;
-        white-space: pre-wrap; word-break: break-all;
-      }
-    </style>
-  </head>
-  <body>
-    <h1>Virtual DOM Diff & Patch Demo</h1>
+      currentVNode = newVNode;
+    }
 
-    <div class="toolbar">
-      <button id="btn-patch">Patch</button>
-      <button id="btn-back" disabled>◀ 뒤로가기</button>
-      <button id="btn-forward" disabled>앞으로가기 ▶</button>
-    </div>
+    function addTodo() {
+      const text = state.inputValue.trim();
+      if (!text) return;
+      state.todos.push({ id: state.nextId++, text, done: false });
+      state.inputValue = '';
+      update();
+    }
 
-    <div class="container">
-      <div class="panel-wrapper">
-        <h2>실제 영역 (읽기 전용)</h2>
-        <div class="panel" id="real-area"><div>
-            <h1>Hello</h1>
-            <p style="color: blue">Virtual DOM Demo</p>
-            <ul><li>Item 1</li><li>Item 2</li><li>Item 3</li></ul>
-        </div></div>
-      </div>
-      <div class="panel-wrapper">
-        <h2>테스트 영역 (편집 가능)</h2>
-        <div class="panel" id="test-area"></div>
-      </div>
-    </div>
+    function toggle(id) {
+      const todo = state.todos.find(t => t.id === id);
+      todo.done = !todo.done;
+      update();
+    }
 
-    <div class="history-section">
-      <h2>히스토리 스택</h2>
-      <ul class="history-list" id="history-list"></ul>
-    </div>
+    function remove(id) {
+      state.todos = state.todos.filter(t => t.id !== id);
+      update();
+    }
 
-    <script type="module">
-      import { domToVdom, renderTo, diff, applyPatches } from "/src/lib.js";
-      import { createHistory } from "/src/history.js";
-
-      const realArea = document.getElementById("real-area");
-      const testArea = document.getElementById("test-area");
-      const btnPatch = document.getElementById("btn-patch");
-      const btnBack = document.getElementById("btn-back");
-      const btnForward = document.getElementById("btn-forward");
-
-      // 초기화 — realArea도 renderTo로 재렌더링하여 공백 텍스트 노드 제거
-      const initialVdom = domToVdom(realArea.firstElementChild);
-      const history = createHistory(initialVdom);
-      renderTo(realArea, initialVdom);
-      renderTo(testArea, initialVdom);
-      testArea.contentEditable = "true";
-
-      const historyListEl = document.getElementById("history-list");
-
-      function renderHistoryList() {
-        const entries = history.entries();
-        const currentIdx = history.currentIndex();
-        historyListEl.innerHTML = "";
-
-        for (let i = entries.length - 1; i >= 0; i--) {
-          const vdom = entries[i];
-          const details = document.createElement("details");
-          details.className = "history-item" + (i === currentIdx ? " active" : "");
-
-          const summary = document.createElement("summary");
-          summary.className = "history-summary";
-          summary.innerHTML =
-            `<span class="arrow">▶</span>` +
-            `<span>v${i}${i === currentIdx ? " (현재)" : ""}</span>`;
-
-          const snapshot = document.createElement("div");
-          snapshot.className = "history-snapshot";
-          const pre = document.createElement("pre");
-          pre.textContent = JSON.stringify(vdom, null, 2);
-          snapshot.appendChild(pre);
-
-          details.appendChild(summary);
-          details.appendChild(snapshot);
-          historyListEl.appendChild(details);
-        }
-      }
-
-      function updateButtons() {
-        btnBack.disabled = !history.canBack();
-        btnForward.disabled = !history.canForward();
-      }
-
-      function updateUI() {
-        updateButtons();
-        renderHistoryList();
-      }
-
-      // Patch 버튼
-      btnPatch.addEventListener("click", () => {
-        const newVdom = domToVdom(testArea.firstElementChild);
-        const patches = diff(history.current(), newVdom);
-
-        if (patches.length === 0) return;
-
-        applyPatches(realArea.firstElementChild, patches);
-        history.push(newVdom);
-        updateUI();
-      });
-
-      // 뒤로가기
-      btnBack.addEventListener("click", () => {
-        const targetVdom = history.back();
-        renderTo(realArea, targetVdom);
-        renderTo(testArea, targetVdom);
-        testArea.contentEditable = "true";
-        updateUI();
-      });
-
-      // 앞으로가기
-      btnForward.addEventListener("click", () => {
-        const targetVdom = history.forward();
-        renderTo(realArea, targetVdom);
-        renderTo(testArea, targetVdom);
-        testArea.contentEditable = "true";
-        updateUI();
-      });
-
-      // 초기 히스토리 목록 렌더링
-      renderHistoryList();
-    </script>
-  </body>
+    update();
+  </script>
+</body>
 </html>
