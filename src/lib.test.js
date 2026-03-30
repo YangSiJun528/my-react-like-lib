@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { tags, createElement, render, diff, applyPatches } from "./lib.js";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { tags, createElement, render, diff, applyPatches, setRoot, useState, useEffect, useMemo } from "./lib.js";
 
 const { div, p, button, span, ul, li, input, a, h1 } = tags;
 
@@ -838,5 +838,212 @@ describe("diff() key 기반 리스트 reconciliation", () => {
     // Then: 3개 REMOVE 패치
     const removePatches = patches.filter((p) => p.type === "REMOVE");
     expect(removePatches).toHaveLength(3);
+  });
+});
+
+describe("setRoot + FunctionComponent", () => {
+  it("setRoot 호출 후 컨테이너에 컴포넌트 반환 vnode가 DOM으로 렌더링된다", () => {
+    const container = document.createElement("div");
+    function Comp() { return div("hello"); }
+    setRoot(Comp, container);
+    expect(container.innerHTML).toBe("<div>hello</div>");
+  });
+
+  it("컴포넌트가 갱신되면 diff+applyPatches로 DOM이 업데이트된다", () => {
+    const container = document.createElement("div");
+    let count = 0;
+    function Comp() { count++; return div(String(count)); }
+    const inst = setRoot(Comp, container);
+    inst._doUpdate();
+    expect(container.firstChild.textContent).toBe("2");
+  });
+});
+
+describe("useState", () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("초기값이 첫 렌더에서 반환된다", () => {
+    const container = document.createElement("div");
+    function Comp() { const [v] = useState(42); return div(String(v)); }
+    setRoot(Comp, container);
+    expect(container.firstChild.textContent).toBe("42");
+  });
+
+  it("setter 호출 후 rAF 실행 시 DOM이 업데이트된다", () => {
+    const container = document.createElement("div");
+    let setter;
+    function Comp() { const [v, setV] = useState(0); setter = setV; return div(String(v)); }
+    setRoot(Comp, container);
+    setter(99);
+    vi.runAllTimers();
+    expect(container.firstChild.textContent).toBe("99");
+  });
+
+  it("setter 2회 호출 시 rAF는 1회만 등록된다 (배칭)", () => {
+    const container = document.createElement("div");
+    let setter;
+    function Comp() { const [v, setV] = useState(0); setter = setV; return div(String(v)); }
+    setRoot(Comp, container);
+    const rafSpy = vi.spyOn(global, "requestAnimationFrame");
+    setter(1);
+    setter(2);
+    expect(rafSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("setter 연속 2회 호출 후 rAF 실행 시 마지막 상태가 DOM에 반영된다", () => {
+    const container = document.createElement("div");
+    let setter;
+    function Comp() { const [v, setV] = useState("init"); setter = setV; return div(v); }
+    setRoot(Comp, container);
+    setter("a");
+    setter("b");
+    vi.runAllTimers();
+    expect(container.firstChild.textContent).toBe("b");
+  });
+});
+
+describe("useEffect", () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("최초 마운트 후 effect가 실행된다", () => {
+    const container = document.createElement("div");
+    let ran = false;
+    function Comp() { useEffect(() => { ran = true; }, []); return div(); }
+    setRoot(Comp, container);
+    expect(ran).toBe(true);
+  });
+
+  it("deps 변경 시 effect가 재실행된다", () => {
+    const container = document.createElement("div");
+    let count = 0;
+    let setter;
+    function Comp() {
+      const [v, setV] = useState(0);
+      setter = setV;
+      useEffect(() => { count++; }, [v]);
+      return div();
+    }
+    setRoot(Comp, container);
+    expect(count).toBe(1);
+    setter(1);
+    vi.runAllTimers();
+    expect(count).toBe(2);
+  });
+
+  it("deps 미변경 시 effect가 재실행되지 않는다", () => {
+    const container = document.createElement("div");
+    let count = 0;
+    let setter;
+    function Comp() {
+      const [v, setV] = useState(0);
+      setter = setV;
+      useEffect(() => { count++; }, []);
+      return div();
+    }
+    setRoot(Comp, container);
+    expect(count).toBe(1);
+    setter(1);
+    vi.runAllTimers();
+    expect(count).toBe(1);
+  });
+
+  it("재실행 전 이전 cleanup이 호출된다", () => {
+    const container = document.createElement("div");
+    const log = [];
+    let setter;
+    function Comp() {
+      const [v, setV] = useState(0);
+      setter = setV;
+      useEffect(() => {
+        log.push("effect");
+        return () => log.push("cleanup");
+      }, [v]);
+      return div();
+    }
+    setRoot(Comp, container);
+    expect(log).toEqual(["effect"]);
+    setter(1);
+    vi.runAllTimers();
+    expect(log).toEqual(["effect", "cleanup", "effect"]);
+  });
+
+  it("deps 배열이 없으면 매 렌더마다 실행된다", () => {
+    const container = document.createElement("div");
+    let count = 0;
+    let setter;
+    function Comp() {
+      const [v, setV] = useState(0);
+      setter = setV;
+      useEffect(() => { count++; });
+      return div();
+    }
+    setRoot(Comp, container);
+    expect(count).toBe(1);
+    setter(1);
+    vi.runAllTimers();
+    expect(count).toBe(2);
+  });
+});
+
+describe("useMemo", () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("초기 렌더 시 팩토리 함수가 실행되어 값이 반환된다", () => {
+    const container = document.createElement("div");
+    let computed;
+    function Comp() { computed = useMemo(() => 42, []); return div(); }
+    setRoot(Comp, container);
+    expect(computed).toBe(42);
+  });
+
+  it("deps 불변 시 팩토리 함수가 재실행되지 않는다", () => {
+    const container = document.createElement("div");
+    let callCount = 0;
+    let setter;
+    function Comp() {
+      const [v, setV] = useState(0);
+      setter = setV;
+      useMemo(() => { callCount++; return v; }, []);
+      return div();
+    }
+    setRoot(Comp, container);
+    expect(callCount).toBe(1);
+    setter(1);
+    vi.runAllTimers();
+    expect(callCount).toBe(1);
+  });
+
+  it("deps 변경 시 팩토리 함수가 재실행되어 새 값이 반환된다", () => {
+    const container = document.createElement("div");
+    let result;
+    let setter;
+    function Comp() {
+      const [v, setV] = useState(0);
+      setter = setV;
+      result = useMemo(() => v * 2, [v]);
+      return div();
+    }
+    setRoot(Comp, container);
+    expect(result).toBe(0);
+    setter(5);
+    vi.runAllTimers();
+    expect(result).toBe(10);
+  });
+});
+
+describe("훅 컨텍스트 오류", () => {
+  it("컴포넌트 외부에서 useState 호출 시 오류가 발생한다", () => {
+    expect(() => useState(0)).toThrow();
+  });
+
+  it("컴포넌트 외부에서 useEffect 호출 시 오류가 발생한다", () => {
+    expect(() => useEffect(() => {}, [])).toThrow();
+  });
+
+  it("컴포넌트 외부에서 useMemo 호출 시 오류가 발생한다", () => {
+    expect(() => useMemo(() => 0, [])).toThrow();
   });
 });

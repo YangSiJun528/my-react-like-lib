@@ -237,3 +237,111 @@ export function diff(oldNode, newNode, path = []) {
     ...diffChildren(oldNode.children || [], newNode.children || [], path),
   ];
 }
+
+let currentComponent = null;
+
+function getHook(init) {
+  if (!currentComponent) throw new Error('훅은 컴포넌트 내부에서만 사용 가능');
+  const i = currentComponent.hookIndex++;
+  if (currentComponent.hooks[i] === undefined) currentComponent.hooks[i] = init;
+  return currentComponent.hooks[i];
+}
+
+const depsChanged = (prev, next) =>
+  !prev || !next || next.some((d, i) => d !== prev[i]);
+
+class FunctionComponent {
+  constructor(fn) {
+    this.fn = fn;
+    this.hooks = [];
+    this.hookIndex = 0;
+    this.vnode = null;
+    this.domNode = null;
+  }
+
+  _render() {
+    currentComponent = this;
+    this.hookIndex = 0;
+    const vnode = this.fn();
+    currentComponent = null;
+    return vnode;
+  }
+
+  _flushEffects() {
+    this.hooks.forEach(hook => {
+      if (!hook?.pending) return;
+      hook.cleanup?.();
+      hook.cleanup = hook.fn?.() ?? null;
+      hook.pending = false;
+    });
+  }
+
+  _commit(newVNode, container) {
+    if (!this.domNode) {
+      this.domNode = createElement(newVNode);
+      container.appendChild(this.domNode);
+    } else {
+      applyPatches(this.domNode, diff(this.vnode, newVNode));
+    }
+    this.vnode = newVNode;
+    this._flushEffects();
+  }
+
+  mount(container) {
+    this._commit(this._render(), container);
+  }
+
+  _doUpdate() {
+    this._commit(this._render());
+  }
+}
+
+export function useState(initialValue) {
+  const comp = currentComponent;
+  const hook = getHook({ value: initialValue });
+  const setValue = (newVal) => {
+    hook.value = newVal;
+    comp.update();
+  };
+  return [hook.value, setValue];
+}
+
+export function useEffect(fn, deps) {
+  const hook = getHook({ fn: null, deps: undefined, cleanup: null, pending: false });
+  if (depsChanged(hook.deps, deps)) {
+    hook.fn = fn;
+    hook.deps = deps;
+    hook.pending = true;
+  }
+}
+
+export function useMemo(fn, deps) {
+  const hook = getHook({ value: undefined, deps: undefined, initialized: false });
+  if (!hook.initialized || depsChanged(hook.deps, deps)) {
+    hook.value = fn();
+    hook.deps = deps;
+    hook.initialized = true;
+  }
+  return hook.value;
+}
+
+export function setRoot(ComponentFn, container) {
+  const instance = new FunctionComponent(ComponentFn);
+  let pendingRender = false;
+
+  instance.update = () => {
+    if (pendingRender) return;
+    pendingRender = true;
+    const run = () => {
+      if (!pendingRender) return;
+      pendingRender = false;
+      instance._doUpdate();
+    };
+    // rAF handles real browsers; setTimeout ensures flush in vitest fake-timer environments
+    requestAnimationFrame(run);
+    setTimeout(run, 0);
+  };
+
+  instance.mount(container);
+  return instance;
+}
