@@ -552,6 +552,27 @@ describe("applyPatches()", () => {
     expect(domDiv.hasAttribute("id")).toBe(false);
   });
 
+  it("PROPS removedProps가 이벤트 핸들러도 제거한다", () => {
+    // Arrange
+    const container = document.createElement("div");
+    let clicks = 0;
+    render(button({ onClick: () => { clicks++; } }, "click"), container);
+    const domButton = container.firstChild;
+    const patches = [{
+      type: "PROPS",
+      path: [],
+      props: {},
+      removedProps: ["onClick"],
+    }];
+
+    // Act
+    applyPatches(domButton, patches);
+    domButton.click();
+
+    // Assert
+    expect(clicks).toBe(0);
+  });
+
   it("TEXT 패치 → 텍스트 노드 변경", () => {
     // Arrange
     const container = document.createElement("div");
@@ -599,6 +620,22 @@ describe("applyPatches()", () => {
 
     // Assert
     expect(domDiv.outerHTML).toBe("<div><span>a</span></div>");
+  });
+
+  it("루트 REPLACE 패치 시 새 루트 노드를 반환한다", () => {
+    // Arrange
+    const container = document.createElement("div");
+    render(div("old"), container);
+    const domRoot = container.firstChild;
+    const newVNode = span("new");
+    const patches = [{ type: "REPLACE", path: [], newVNode }];
+
+    // Act
+    const nextRoot = applyPatches(domRoot, patches);
+
+    // Assert
+    expect(container.innerHTML).toBe("<span>new</span>");
+    expect(nextRoot).toBe(container.firstChild);
   });
 });
 
@@ -786,8 +823,8 @@ describe("diff() key 기반 리스트 reconciliation", () => {
     expect(textPatches[0].text).toBe("X");
   });
 
-  it("key 있는/없는 혼합 처리 — key 노드는 key 매칭, 없는 노드는 인덱스 매칭", () => {
-    // Given: key 있는 노드 재정렬, key 없는 노드 동일 유지
+  it("key 있는/없는 혼합 처리 — 단순 인덱스 diff로 fallback", () => {
+    // Given: 혼합 리스트는 재정렬 최적화 대신 인덱스 기준으로 비교
     const oldVNode = ul(
       li({ key: "a" }, "A"),
       li("no-key"),
@@ -802,8 +839,13 @@ describe("diff() key 기반 리스트 reconciliation", () => {
     // When
     const patches = diff(oldVNode, newVNode);
 
-    // Then: key 노드(a,b)는 내용 동일, key 없는 노드도 동일 → 패치 없음
-    expect(patches).toHaveLength(0);
+    // Then: 첫 번째/세 번째 텍스트만 바뀌므로 TEXT 패치 2개
+    const textPatches = patches.filter((p) => p.type === "TEXT");
+    expect(textPatches).toHaveLength(2);
+    expect(textPatches).toEqual([
+      { type: "TEXT", path: [0, 0], text: "B" },
+      { type: "TEXT", path: [2, 0], text: "A" },
+    ]);
   });
 
   it("빈 리스트 → 비어있지 않은 리스트 — 전부 CREATE", () => {
@@ -900,6 +942,17 @@ describe("useState", () => {
     setter("b");
     vi.runAllTimers();
     expect(container.firstChild.textContent).toBe("b");
+  });
+
+  it("functional updater를 연속 호출하면 이전 상태를 기준으로 누적된다", () => {
+    const container = document.createElement("div");
+    let setter;
+    function Comp() { const [v, setV] = useState(0); setter = setV; return div(String(v)); }
+    setRoot(Comp, container);
+    setter((value) => value + 1);
+    setter((value) => value + 1);
+    vi.runAllTimers();
+    expect(container.firstChild.textContent).toBe("2");
   });
 });
 

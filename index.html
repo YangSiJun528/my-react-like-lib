@@ -1,78 +1,115 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TODO List</title>
-  <style>
-    body { font-family: sans-serif; max-width: 480px; margin: 40px auto; padding: 0 16px; }
-    ul { padding: 0; list-style: none; }
-    li { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
-  </style>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>TODO List</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 480px;
+            margin: 40px auto;
+            padding: 0 16px;
+        }
+
+        ul {
+            padding: 0;
+            list-style: none;
+        }
+
+        li {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 4px 0;
+        }
+    </style>
 </head>
 <body>
-  <div id="root"></div>
+<div id="root"></div>
 
-  <script type="module">
-    import { tags, setRoot, useState } from './src/lib.js';
-    const { div, h1, input, button, ul, li, span } = tags;
+<script type="module">
+    import {tags, setRoot, useState} from "./src/lib.js";
 
-    const container = document.getElementById('root');
+    const {div, h1, input, button, ul, li, span} = tags;
+    const container = document.getElementById("root");
 
-    function TodoItem({ todo, onToggle, onRemove }) {
-      return li({ key: String(todo.id) },
-        span({
-          onClick: () => onToggle(todo.id),
-          style: {
-            cursor: 'pointer',
-            flex: '1',
-            textDecoration: todo.done ? 'line-through' : 'none',
-            color: todo.done ? '#999' : '#000'
-          }
-        }, todo.text),
-        button({ onClick: () => onRemove(todo.id) }, '✕')
-      );
+    function TodoItem({todo, onToggle, onRemove}) {
+        return li(
+            {key: String(todo.id)},
+            span(
+                {
+                    onClick: () => onToggle(todo.id),
+                    class: "todo_id_" + todo.id,
+                    style: {
+                        cursor: "pointer",
+                        flex: "1",
+                        textDecoration: todo.done ? "line-through" : "none",
+                        color: todo.done ? "#999" : "#000",
+                    },
+                },
+                todo.text
+            ),
+            button({onClick: () => onRemove(todo.id)}, "✕")
+        );
     }
 
     function App() {
-      const [todos, setTodos] = useState([]);
-      const [nextId, setNextId] = useState(1);
-      const [inputValue, setInputValue] = useState('');
+        const [todos, setTodos] = useState([]);
+        const [nextId, setNextId] = useState(1);
+        const [inputValue, setInputValue] = useState("");
 
-      function addTodo() {
-        const text = inputValue.trim();
-        if (!text) return;
-        setTodos([...todos, { id: nextId, text, done: false }]);
-        setNextId(nextId + 1);
-        setInputValue('');
-      }
+        function addTodo() {
+            const text = inputValue.trim();
+            if (!text) return;
 
-      function toggle(id) {
-        setTodos(todos.map(t => t.id === id ? { ...t, done: !t.done } : t));
-      }
+            setNextId((id) => {
+                setTodos((list) => [
+                    ...list,
+                    {id, text, done: false},
+                ]);
+                return id + 1;
+            });
+            setInputValue("");
+        }
 
-      function remove(id) {
-        setTodos(todos.filter(t => t.id !== id));
-      }
+        function toggle(id) {
+            setTodos((list) =>
+                list.map((todo) =>
+                    todo.id === id
+                        ? {...todo, done: !todo.done}
+                        : todo
+                )
+            );
+        }
 
-      return div(
-        h1('TODO'),
-        div(
-          input({
-            value: inputValue,
-            onInput: e => setInputValue(e.target.value),
-            onKeydown: e => { if (e.key === 'Enter') addTodo(); },
-            placeholder: '할 일을 입력하세요'
-          }),
-          button({ onClick: addTodo }, 'Add')
-        ),
-        ul(
-          ...todos.map(todo => TodoItem({ todo, onToggle: toggle, onRemove: remove }))
-        )
-      );
+        function remove(id) {
+            setTodos((list) => list.filter((todo) => todo.id !== id));
+        }
+
+        return div(
+            h1("TODO"),
+            div(
+                input({
+                    value: inputValue,
+                    onInput: (e) => setInputValue(e.target.value),
+                    placeholder: "할 일을 입력하세요",
+                }),
+                button({onClick: addTodo}, "Add")
+            ),
+            ul(
+                ...todos.map((todo) =>
+                    TodoItem({
+                        todo,
+                        onToggle: toggle,
+                        onRemove: remove,
+                    })
+                )
+            )
+        );
     }
 
     setRoot(App, container);
-  </script>
+</script>
 </body>
 </html>
