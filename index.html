@@ -14,27 +14,45 @@
   <div id="root"></div>
 
   <script type="module">
-    import { tags, render, diff, applyPatches } from './src/lib.js';
+    import { tags, setRoot, useState } from './src/lib.js';
     const { div, h1, input, button, ul, li, span } = tags;
 
     const container = document.getElementById('root');
-    let state = { todos: [], nextId: 1, inputValue: '' };
-    let currentVNode = null;
 
-    function view(s) {
+    function App() {
+      const [todos, setTodos] = useState([]);
+      const [nextId, setNextId] = useState(1);
+      const [inputValue, setInputValue] = useState('');
+
+      function addTodo() {
+        const text = inputValue.trim();
+        if (!text) return;
+        setTodos([...todos, { id: nextId, text, done: false }]);
+        setNextId(nextId + 1);
+        setInputValue('');
+      }
+
+      function toggle(id) {
+        setTodos(todos.map(t => t.id === id ? { ...t, done: !t.done } : t));
+      }
+
+      function remove(id) {
+        setTodos(todos.filter(t => t.id !== id));
+      }
+
       return div(
         h1('TODO'),
         div(
           input({
-            value: s.inputValue,
-            onInput: e => { state.inputValue = e.target.value; },
+            value: inputValue,
+            onInput: e => setInputValue(e.target.value),
             onKeydown: e => { if (e.key === 'Enter') addTodo(); },
             placeholder: '할 일을 입력하세요'
           }),
           button({ onClick: addTodo }, 'Add')
         ),
         ul(
-          ...s.todos.map(todo =>
+          ...todos.map(todo =>
             li({ key: String(todo.id) },
               span({
                 onClick: () => toggle(todo.id),
@@ -52,36 +70,7 @@
       );
     }
 
-    function update() {
-      const newVNode = view(state);
-      if (!currentVNode) {
-        render(newVNode, container);
-      } else {
-        applyPatches(container.firstChild, diff(currentVNode, newVNode));
-      }
-      currentVNode = newVNode;
-    }
-
-    function addTodo() {
-      const text = state.inputValue.trim();
-      if (!text) return;
-      state.todos.push({ id: state.nextId++, text, done: false });
-      state.inputValue = '';
-      update();
-    }
-
-    function toggle(id) {
-      const todo = state.todos.find(t => t.id === id);
-      todo.done = !todo.done;
-      update();
-    }
-
-    function remove(id) {
-      state.todos = state.todos.filter(t => t.id !== id);
-      update();
-    }
-
-    update();
+    setRoot(App, container);
   </script>
 </body>
 </html>
