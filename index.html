@@ -19,6 +19,21 @@
 
     const container = document.getElementById('root');
 
+    function TodoItem({ todo, onToggle, onRemove }) {
+      return li({ key: String(todo.id) },
+        span({
+          onClick: () => onToggle(todo.id),
+          style: {
+            cursor: 'pointer',
+            flex: '1',
+            textDecoration: todo.done ? 'line-through' : 'none',
+            color: todo.done ? '#999' : '#000'
+          }
+        }, todo.text),
+        button({ onClick: () => onRemove(todo.id) }, '✕')
+      );
+    }
+
     function App() {
       const [todos, setTodos] = useState([]);
       const [nextId, setNextId] = useState(1);
@@ -52,20 +67,7 @@
           button({ onClick: addTodo }, 'Add')
         ),
         ul(
-          ...todos.map(todo =>
-            li({ key: String(todo.id) },
-              span({
-                onClick: () => toggle(todo.id),
-                style: {
-                  cursor: 'pointer',
-                  flex: '1',
-                  textDecoration: todo.done ? 'line-through' : 'none',
-                  color: todo.done ? '#999' : '#000'
-                }
-              }, todo.text),
-              button({ onClick: () => remove(todo.id) }, '✕')
-            )
-          )
+          ...todos.map(todo => TodoItem({ todo, onToggle: toggle, onRemove: remove }))
         )
       );
     }
