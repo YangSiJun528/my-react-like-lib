@@ -1,114 +1,126 @@
-// ─── 1. VNode 헬퍼 ────────────────────────────────────────────────────────────
+// ─── 1. 공개 진입점 ───────────────────────────────────────────────────────────
 
-function isVNode(arg) {
-    return arg !== null && typeof arg === "object" && arg.$$type === "vnode";
-}
+/**
+ * 앱의 진입점. 루트 컴포넌트를 컨테이너에 마운트하고
+ * 상태 변경 시 자동으로 리렌더링되도록 연결한다.
+ *
+ * update()는 rAF와 setTimeout을 모두 등록한다:
+ * - rAF: 브라우저 환경에서 프레임 단위로 배칭 (불필요한 중간 렌더 방지)
+ * - setTimeout: vitest 등 fake timer 환경에서 rAF가 자동 실행되지 않을 때 flush 보장
+ * pendingRender 플래그로 두 타이머 중 하나가 먼저 실행되면 나머지는 no-op이 된다.
+ *
+ * @param {function(): object} ComponentFn - 루트 컴포넌트 함수 (훅 사용 가능)
+ * @param {HTMLElement} container - 마운트 대상 DOM 컨테이너
+ * @returns {FunctionComponent} 마운트된 컴포넌트 인스턴스
+ */
+export function setRoot(ComponentFn, container) {
+    const instance = new FunctionComponent(ComponentFn);
+    let pendingRender = false;
 
-function isProps(arg) {
-    // vnode 객체와 자식 배열을 props로 오인하지 않도록 모두 배제한다
-    return (
-        arg !== null &&
-        typeof arg === "object" &&
-        !isVNode(arg) &&
-        !Array.isArray(arg)
-    );
-}
+    instance.update = () => {
+        if (pendingRender) return;
+        pendingRender = true;
 
-function isText(node) {
-    return typeof node === "string" || typeof node === "number";
-}
+        const run = () => {
+            if (!pendingRender) return;
+            pendingRender = false;
+            instance._doUpdate();
+        };
 
-function isKeyed(node) {
-    return node && typeof node === "object" && node.key != null;
-}
-
-function normalizeChildren(args) {
-    // 조건부 렌더링에서 false/true가 children에 포함되는 것을 방지한다
-    // 예: condition && div() → condition이 false이면 false가 그대로 전달됨
-    return args
-        .flat()
-        .filter((c) => c !== null && c !== undefined && typeof c !== "boolean");
-}
-
-// ─── 2. DOM 속성 적용 ─────────────────────────────────────────────────────────
-
-function setProp(el, key, value) {
-    if (key.startsWith("on")) {
-        const type = key.slice(2).toLowerCase();
-        const store = el._events || (el._events = {});
-
-        // el._events에 이전 핸들러를 캐싱하여 리렌더 시 제거 후 재등록한다.
-        // addEventListener만 반복 호출하면 리스너가 누적되므로 스토어가 필수다.
-        if (store[type]) {
-            el.removeEventListener(type, store[type]);
-            delete store[type];
+        if (typeof requestAnimationFrame === "function") {
+            requestAnimationFrame(run);
         }
 
-        if (typeof value === "function") {
-            el.addEventListener(type, value);
-            store[type] = value;
-        }
-        return;
-    }
-
-    if (key === "class" || key === "className") {
-        el.className = value ?? "";
-        return;
-    }
-
-    if (key === "style") {
-        el.style.cssText = "";
-        if (typeof value === "string") {
-            el.style.cssText = value;
-        } else if (value && typeof value === "object") {
-            Object.assign(el.style, value);
-        }
-        return;
-    }
-
-    // 폼 요소의 value/checked/selected는 setAttribute로는 초기값만 설정되고
-    // 실제 DOM 상태를 반영하지 못하므로 프로퍼티에 직접 할당한다.
-    if (key === "value" || key === "checked" || key === "selected") {
-        el[key] = value ?? (key === "value" ? "" : false);
-        return;
-    }
-
-    if (value == null || value === false) {
-        el.removeAttribute(key);
-        return;
-    }
-
-    el.setAttribute(key, value === true ? "" : value);
-}
-
-function applyProps(el, props) {
-    for (const [key, value] of Object.entries(props)) {
-        setProp(el, key, value);
-    }
-}
-
-// ─── 3. VNode 팩토리 (tag API) ────────────────────────────────────────────────
-
-function tag(name, ...args) {
-    let props = {};
-    let startIdx = 0;
-
-    if (args.length > 0 && isProps(args[0])) {
-        props = {...args[0]};
-        startIdx = 1;
-    }
-
-    const key = props.key !== undefined ? props.key : null;
-    delete props.key;
-
-    return {
-        $$type: "vnode",
-        tag: name,
-        props,
-        children: normalizeChildren(args.slice(startIdx)),
-        key,
+        setTimeout(run, 0);
     };
+
+    instance.mount(container);
+    return instance;
 }
+
+// ─── 2. 훅 ────────────────────────────────────────────────────────────────────
+
+/**
+ * 컴포넌트 렌더링 사이에 값을 유지하는 상태 훅.
+ * setter 호출 시 값이 실제로 변경된 경우에만 리렌더를 예약한다.
+ * 반드시 setRoot에 전달된 루트 컴포넌트 함수 내에서만 호출해야 한다.
+ *
+ * @template T
+ * @param {T} initialValue - 초기 상태값
+ * @returns {[T, function]} [현재값, setter 함수]
+ */
+export function useState(initialValue) {
+    // getter 호출 전에 currentComponent를 comp에 캡처한다.
+    // setter(hook.set)는 렌더 이후 비동기적으로 호출되므로,
+    // 이 시점에서 currentComponent는 이미 null이 되어 있다.
+    // comp를 클로저로 캡처해야 setter가 올바른 컴포넌트를 참조할 수 있다.
+    const comp = currentComponent;
+    const hook = getHook({value: initialValue, set: null});
+
+    if (!hook.set) {
+        hook.set = (next) => {
+            const value =
+                typeof next === "function" ? next(hook.value) : next;
+
+            if (Object.is(hook.value, value)) return;
+
+            hook.value = value;
+            comp.update();
+        };
+    }
+
+    return [hook.value, hook.set];
+}
+
+/**
+ * 의존성 배열이 변경될 때마다 사이드이펙트 함수를 실행한다.
+ * 이전 실행의 cleanup 함수가 있으면 새 실행 전에 먼저 호출된다.
+ * 실제 실행은 렌더 직후 FunctionComponent._flushEffects에서 일어난다.
+ *
+ * @param {function} fn - 실행할 이펙트 함수. cleanup 함수를 반환할 수 있다.
+ * @param {any[]} deps - 변경 감지 대상 의존성 배열
+ */
+export function useEffect(fn, deps) {
+    const hook = getHook({
+        fn: null,
+        deps: undefined,
+        cleanup: null,
+        pending: false,
+    });
+
+    if (depsChanged(hook.deps, deps)) {
+        hook.fn = fn;
+        hook.deps = deps;
+        hook.pending = true;
+    }
+}
+
+/**
+ * 의존성 배열이 변경될 때만 fn을 재실행하여 값을 메모이제이션한다.
+ * 렌더 중 동기적으로 실행되며, 비용이 큰 계산을 반복하지 않기 위해 사용한다.
+ *
+ * @template T
+ * @param {function(): T} fn - 메모이제이션할 값을 계산하는 함수
+ * @param {any[]} deps - 변경 감지 대상 의존성 배열
+ * @returns {T} 계산된 메모이제이션 값
+ */
+export function useMemo(fn, deps) {
+    const hook = getHook({
+        value: undefined,
+        deps: undefined,
+        initialized: false,
+    });
+
+    if (!hook.initialized || depsChanged(hook.deps, deps)) {
+        hook.value = fn();
+        hook.deps = deps;
+        hook.initialized = true;
+    }
+
+    return hook.value;
+}
+
+// ─── 3. 태그 팩토리 ───────────────────────────────────────────────────────────
 
 /**
  * VanJS 스타일의 태그 팩토리 프록시.
@@ -124,7 +136,209 @@ export const tags = new Proxy(
     {get: (_, name) => (...args) => tag(name, ...args)}
 );
 
-// ─── 4. DOM 생성 및 렌더링 ────────────────────────────────────────────────────
+// ─── 4. 컴포넌트 라이프사이클 ─────────────────────────────────────────────────
+
+class FunctionComponent {
+    constructor(fn) {
+        this.fn = fn;
+        this.hooks = [];
+        this.hookIndex = 0;
+        this.vnode = null;
+        this.domNode = null;
+    }
+
+    _render() {
+        // currentComponent를 this로 설정하여 훅이 올바른 인스턴스에 접근하도록 한다.
+        // try/finally로 렌더 도중 에러가 나도 currentComponent가 null로 복원된다.
+        currentComponent = this;
+        this.hookIndex = 0;
+
+        try {
+            return this.fn();
+        } finally {
+            currentComponent = null;
+        }
+    }
+
+    _flushEffects() {
+        // pending 플래그가 설정된 훅만 실행한다 (의존성이 변경된 것들).
+        // cleanup → fn 순서: 이전 이펙트의 정리 작업을 먼저 실행한 뒤 새 이펙트를 실행한다.
+        this.hooks.forEach((hook) => {
+            if (!hook?.pending) return;
+            hook.cleanup?.();
+            hook.cleanup = hook.fn?.() ?? null;
+            hook.pending = false;
+        });
+    }
+
+    _commit(newVNode, container = this.domNode?.parentNode) {
+        if (!this.domNode) {
+            this.domNode = createElement(newVNode);
+            container.appendChild(this.domNode);
+        } else {
+            this.domNode = applyPatches(
+                this.domNode,
+                diff(this.vnode, newVNode)
+            );
+        }
+
+        this.vnode = newVNode;
+        this._flushEffects();
+    }
+
+    mount(container) {
+        this._commit(this._render(), container);
+    }
+
+    _doUpdate() {
+        this._commit(this._render());
+    }
+}
+
+// ─── 5. 가상 DOM ──────────────────────────────────────────────────────────────
+
+/**
+ * 두 vnode 트리를 비교하여 변경 사항을 패치 배열로 반환한다.
+ * 패치 타입: "CREATE" | "REMOVE" | "REPLACE" | "PROPS" | "TEXT" | "REORDER"
+ *
+ * @param {object|string|number|null} oldNode - 이전 가상 노드
+ * @param {object|string|number|null} newNode - 새 가상 노드
+ * @param {number[]} [path=[]] - 루트로부터의 childNodes 인덱스 경로
+ * @returns {object[]} 적용할 패치 목록
+ */
+export function diff(oldNode, newNode, path = []) {
+    if (oldNode == null && newNode != null) {
+        return [{type: "CREATE", path, newVNode: newNode}];
+    }
+
+    if (oldNode != null && newNode == null) {
+        return [{type: "REMOVE", path}];
+    }
+
+    if (isText(oldNode) && isText(newNode)) {
+        return oldNode !== newNode
+            ? [{type: "TEXT", path, text: newNode}]
+            : [];
+    }
+
+    if (oldNode.tag !== newNode.tag) {
+        return [{type: "REPLACE", path, newVNode: newNode}];
+    }
+
+    return [
+        ...diffProps(oldNode.props, newNode.props, path),
+        ...diffChildren(oldNode.children || [], newNode.children || [], path),
+    ];
+}
+
+/**
+ * diff가 반환한 패치 배열을 실제 DOM에 반영한다.
+ * 패치는 REMOVE → REORDER → 나머지 순서로 적용된다.
+ * REMOVE는 깊은 노드 / 높은 인덱스부터 처리하여 인덱스 밀림을 방지한다.
+ *
+ * @param {HTMLElement|Text} domNode - 패치를 적용할 루트 DOM 노드
+ * @param {object[]} patches - diff가 반환한 패치 목록
+ * @returns {HTMLElement|Text|null} 패치 적용 후의 루트 DOM 노드 (REPLACE 시 변경될 수 있음)
+ */
+export function applyPatches(domNode, patches) {
+    let root = domNode;
+
+    // path는 루트 DOM 노드에서 대상 노드까지의 childNodes 인덱스 배열이다.
+    // 예) [1, 0] → root.childNodes[1].childNodes[0]
+    function navigate(path) {
+        let node = root;
+        for (const i of path) node = node.childNodes[i];
+        return node;
+    }
+
+    // REMOVE를 깊은 노드 우선, 같은 깊이에서는 높은 인덱스 우선으로 정렬한다.
+    // 낮은 인덱스 노드를 먼저 삭제하면 형제 노드의 인덱스가 밀려
+    // 이후 navigate가 잘못된 노드를 가리키게 된다.
+    const removes = patches
+        .filter((p) => p.type === "REMOVE")
+        .sort((a, b) => {
+            if (a.path.length !== b.path.length) {
+                return b.path.length - a.path.length;
+            }
+            const ai = a.path[a.path.length - 1] ?? 0;
+            const bi = b.path[b.path.length - 1] ?? 0;
+            return bi - ai;
+        });
+
+    const reorders = patches.filter((p) => p.type === "REORDER");
+    const others = patches.filter(
+        (p) => p.type !== "REMOVE" && p.type !== "REORDER"
+    );
+
+    for (const patch of [...removes, ...reorders, ...others]) {
+        if (patch.type === "REMOVE") {
+            if (patch.path.length === 0) {
+                root.parentNode?.removeChild(root);
+                root = null;
+                continue;
+            }
+
+            const node = navigate(patch.path);
+            node.parentNode.removeChild(node);
+            continue;
+        }
+
+        if (patch.type === "REORDER") {
+            const parent = navigate(patch.path);
+            const children = Array.from(parent.childNodes);
+            // appendChild는 DOM에 이미 있는 노드를 호출하면 현재 위치에서 제거 후 끝에 추가한다.
+            // order 배열 순서대로 appendChild를 반복하면 자식 순서가 새 배열 순서로 재배치된다.
+            // 예) children = [A, B, C], order = [2, 0, 1] → C, A, B 순으로 끝에 붙임 → C-A-B
+            for (const i of patch.order) {
+                parent.appendChild(children[i]);
+            }
+            continue;
+        }
+
+        if (patch.type === "CREATE") {
+            const parentPath = patch.path.slice(0, -1);
+            const idx = patch.path[patch.path.length - 1];
+            const parent = navigate(parentPath);
+            const newEl = createElement(patch.newVNode);
+            const ref = parent.childNodes[idx];
+            ref ? parent.insertBefore(newEl, ref) : parent.appendChild(newEl);
+            continue;
+        }
+
+        if (patch.type === "REPLACE") {
+            const newEl = createElement(patch.newVNode);
+
+            if (patch.path.length === 0) {
+                const parent = root.parentNode;
+                if (parent) parent.replaceChild(newEl, root);
+                root = newEl;
+                continue;
+            }
+
+            const node = navigate(patch.path);
+            node.parentNode.replaceChild(newEl, node);
+            continue;
+        }
+
+        if (patch.type === "PROPS") {
+            const node = navigate(patch.path);
+
+            for (const key of patch.removedProps) {
+                setProp(node, key, null);
+            }
+
+            applyProps(node, patch.props);
+            continue;
+        }
+
+        if (patch.type === "TEXT") {
+            const node = navigate(patch.path);
+            node.textContent = patch.text;
+        }
+    }
+
+    return root;
+}
 
 /**
  * vnode 또는 텍스트 노드를 실제 DOM 노드로 변환한다.
@@ -148,20 +362,33 @@ export function createElement(vnode) {
     return el;
 }
 
-/**
- * 컨테이너를 비우고 vnode를 직접 마운트한다.
- * diff 없이 전체를 교체하는 단순 렌더링 — 주로 초기 마운트나 테스트에 사용.
- * 상태 기반 앱에서는 setRoot를 사용할 것.
- *
- * @param {object} vnode - 렌더링할 루트 가상 노드
- * @param {HTMLElement} container - 마운트 대상 DOM 컨테이너
- */
-export function render(vnode, container) {
-    container.innerHTML = "";
-    container.appendChild(createElement(vnode));
+// ─── 6. 훅 내부 구현 ─────────────────────────────────────────────────────────
+
+// 현재 렌더링 중인 컴포넌트 인스턴스. 훅이 올바른 인스턴스에 접근할 수 있도록 한다.
+let currentComponent = null;
+
+function getHook(init) {
+    if (!currentComponent) {
+        throw new Error("훅은 컴포넌트 내부에서만 사용 가능");
+    }
+
+    // hookIndex를 렌더 시작마다 0으로 리셋하고, 훅 호출마다 1씩 증가시킨다.
+    // 이것이 "훅 호출 순서 고정" 규칙의 실제 구현체다.
+    // 조건문 안에서 훅을 호출하면 인덱스가 달라져 다른 슬롯에 접근하게 된다.
+    const i = currentComponent.hookIndex++;
+    if (currentComponent.hooks[i] === undefined) {
+        currentComponent.hooks[i] = init;
+    }
+    return currentComponent.hooks[i];
 }
 
-// ─── 5. 가상 DOM 비교 (diff) ──────────────────────────────────────────────────
+const depsChanged = (prev, next) =>
+    !prev ||
+    !next ||
+    prev.length !== next.length ||
+    next.some((d, i) => !Object.is(d, prev[i]));
+
+// ─── 7. diff 내부 ─────────────────────────────────────────────────────────────
 
 function diffProps(oldProps, newProps, path) {
     const changedProps = {};
@@ -275,348 +502,114 @@ function diffChildren(oldChildren, newChildren, path) {
     return patches;
 }
 
-/**
- * 두 vnode 트리를 비교하여 변경 사항을 패치 배열로 반환한다.
- * 패치 타입: "CREATE" | "REMOVE" | "REPLACE" | "PROPS" | "TEXT" | "REORDER"
- *
- * @param {object|string|number|null} oldNode - 이전 가상 노드
- * @param {object|string|number|null} newNode - 새 가상 노드
- * @param {number[]} [path=[]] - 루트로부터의 childNodes 인덱스 경로
- * @returns {object[]} 적용할 패치 목록
- */
-export function diff(oldNode, newNode, path = []) {
-    if (oldNode == null && newNode != null) {
-        return [{type: "CREATE", path, newVNode: newNode}];
-    }
+// ─── 8. DOM 속성 처리 ────────────────────────────────────────────────────────
 
-    if (oldNode != null && newNode == null) {
-        return [{type: "REMOVE", path}];
-    }
-
-    if (isText(oldNode) && isText(newNode)) {
-        return oldNode !== newNode
-            ? [{type: "TEXT", path, text: newNode}]
-            : [];
-    }
-
-    if (oldNode.tag !== newNode.tag) {
-        return [{type: "REPLACE", path, newVNode: newNode}];
-    }
-
-    return [
-        ...diffProps(oldNode.props, newNode.props, path),
-        ...diffChildren(oldNode.children || [], newNode.children || [], path),
-    ];
-}
-
-// ─── 6. 패치 적용 (applyPatches) ──────────────────────────────────────────────
-
-/**
- * diff가 반환한 패치 배열을 실제 DOM에 반영한다.
- * 패치는 REMOVE → REORDER → 나머지 순서로 적용된다.
- * REMOVE는 깊은 노드 / 높은 인덱스부터 처리하여 인덱스 밀림을 방지한다.
- *
- * @param {HTMLElement|Text} domNode - 패치를 적용할 루트 DOM 노드
- * @param {object[]} patches - diff가 반환한 패치 목록
- * @returns {HTMLElement|Text|null} 패치 적용 후의 루트 DOM 노드 (REPLACE 시 변경될 수 있음)
- */
-export function applyPatches(domNode, patches) {
-    let root = domNode;
-
-    // path는 루트 DOM 노드에서 대상 노드까지의 childNodes 인덱스 배열이다.
-    // 예) [1, 0] → root.childNodes[1].childNodes[0]
-    function navigate(path) {
-        let node = root;
-        for (const i of path) node = node.childNodes[i];
-        return node;
-    }
-
-    // REMOVE를 깊은 노드 우선, 같은 깊이에서는 높은 인덱스 우선으로 정렬한다.
-    // 낮은 인덱스 노드를 먼저 삭제하면 형제 노드의 인덱스가 밀려
-    // 이후 navigate가 잘못된 노드를 가리키게 된다.
-    const removes = patches
-        .filter((p) => p.type === "REMOVE")
-        .sort((a, b) => {
-            if (a.path.length !== b.path.length) {
-                return b.path.length - a.path.length;
-            }
-            const ai = a.path[a.path.length - 1] ?? 0;
-            const bi = b.path[b.path.length - 1] ?? 0;
-            return bi - ai;
-        });
-
-    const reorders = patches.filter((p) => p.type === "REORDER");
-    const others = patches.filter(
-        (p) => p.type !== "REMOVE" && p.type !== "REORDER"
-    );
-
-    for (const patch of [...removes, ...reorders, ...others]) {
-        if (patch.type === "REMOVE") {
-            if (patch.path.length === 0) {
-                root.parentNode?.removeChild(root);
-                root = null;
-                continue;
-            }
-
-            const node = navigate(patch.path);
-            node.parentNode.removeChild(node);
-            continue;
-        }
-
-        if (patch.type === "REORDER") {
-            const parent = navigate(patch.path);
-            const children = Array.from(parent.childNodes);
-            // appendChild는 DOM에 이미 있는 노드를 호출하면 현재 위치에서 제거 후 끝에 추가한다.
-            // order 배열 순서대로 appendChild를 반복하면 자식 순서가 새 배열 순서로 재배치된다.
-            // 예) children = [A, B, C], order = [2, 0, 1] → C, A, B 순으로 끝에 붙임 → C-A-B
-            for (const i of patch.order) {
-                parent.appendChild(children[i]);
-            }
-            continue;
-        }
-
-        if (patch.type === "CREATE") {
-            const parentPath = patch.path.slice(0, -1);
-            const idx = patch.path[patch.path.length - 1];
-            const parent = navigate(parentPath);
-            const newEl = createElement(patch.newVNode);
-            const ref = parent.childNodes[idx];
-            ref ? parent.insertBefore(newEl, ref) : parent.appendChild(newEl);
-            continue;
-        }
-
-        if (patch.type === "REPLACE") {
-            const newEl = createElement(patch.newVNode);
-
-            if (patch.path.length === 0) {
-                const parent = root.parentNode;
-                if (parent) parent.replaceChild(newEl, root);
-                root = newEl;
-                continue;
-            }
-
-            const node = navigate(patch.path);
-            node.parentNode.replaceChild(newEl, node);
-            continue;
-        }
-
-        if (patch.type === "PROPS") {
-            const node = navigate(patch.path);
-
-            for (const key of patch.removedProps) {
-                setProp(node, key, null);
-            }
-
-            applyProps(node, patch.props);
-            continue;
-        }
-
-        if (patch.type === "TEXT") {
-            const node = navigate(patch.path);
-            node.textContent = patch.text;
-        }
-    }
-
-    return root;
-}
-
-// ─── 7. 훅 및 런타임 ──────────────────────────────────────────────────────────
-
-// 현재 렌더링 중인 컴포넌트 인스턴스. 훅이 올바른 인스턴스에 접근할 수 있도록 한다.
-let currentComponent = null;
-
-function getHook(init) {
-    if (!currentComponent) {
-        throw new Error("훅은 컴포넌트 내부에서만 사용 가능");
-    }
-
-    // hookIndex를 렌더 시작마다 0으로 리셋하고, 훅 호출마다 1씩 증가시킨다.
-    // 이것이 "훅 호출 순서 고정" 규칙의 실제 구현체다.
-    // 조건문 안에서 훅을 호출하면 인덱스가 달라져 다른 슬롯에 접근하게 된다.
-    const i = currentComponent.hookIndex++;
-    if (currentComponent.hooks[i] === undefined) {
-        currentComponent.hooks[i] = init;
-    }
-    return currentComponent.hooks[i];
-}
-
-const depsChanged = (prev, next) =>
-    !prev ||
-    !next ||
-    prev.length !== next.length ||
-    next.some((d, i) => !Object.is(d, prev[i]));
-
-class FunctionComponent {
-    constructor(fn) {
-        this.fn = fn;
-        this.hooks = [];
-        this.hookIndex = 0;
-        this.vnode = null;
-        this.domNode = null;
-    }
-
-    _render() {
-        // currentComponent를 this로 설정하여 훅이 올바른 인스턴스에 접근하도록 한다.
-        // try/finally로 렌더 도중 에러가 나도 currentComponent가 null로 복원된다.
-        currentComponent = this;
-        this.hookIndex = 0;
-
-        try {
-            return this.fn();
-        } finally {
-            currentComponent = null;
-        }
-    }
-
-    _flushEffects() {
-        // pending 플래그가 설정된 훅만 실행한다 (의존성이 변경된 것들).
-        // cleanup → fn 순서: 이전 이펙트의 정리 작업을 먼저 실행한 뒤 새 이펙트를 실행한다.
-        this.hooks.forEach((hook) => {
-            if (!hook?.pending) return;
-            hook.cleanup?.();
-            hook.cleanup = hook.fn?.() ?? null;
-            hook.pending = false;
-        });
-    }
-
-    _commit(newVNode, container = this.domNode?.parentNode) {
-        if (!this.domNode) {
-            this.domNode = createElement(newVNode);
-            container.appendChild(this.domNode);
-        } else {
-            this.domNode = applyPatches(
-                this.domNode,
-                diff(this.vnode, newVNode)
-            );
-        }
-
-        this.vnode = newVNode;
-        this._flushEffects();
-    }
-
-    mount(container) {
-        this._commit(this._render(), container);
-    }
-
-    _doUpdate() {
-        this._commit(this._render());
+function applyProps(el, props) {
+    for (const [key, value] of Object.entries(props)) {
+        setProp(el, key, value);
     }
 }
 
-/**
- * 컴포넌트 렌더링 사이에 값을 유지하는 상태 훅.
- * setter 호출 시 값이 실제로 변경된 경우에만 리렌더를 예약한다.
- * 반드시 setRoot에 전달된 루트 컴포넌트 함수 내에서만 호출해야 한다.
- *
- * @template T
- * @param {T} initialValue - 초기 상태값
- * @returns {[T, function]} [현재값, setter 함수]
- */
-export function useState(initialValue) {
-    // getter 호출 전에 currentComponent를 comp에 캡처한다.
-    // setter(hook.set)는 렌더 이후 비동기적으로 호출되므로,
-    // 이 시점에서 currentComponent는 이미 null이 되어 있다.
-    // comp를 클로저로 캡처해야 setter가 올바른 컴포넌트를 참조할 수 있다.
-    const comp = currentComponent;
-    const hook = getHook({value: initialValue, set: null});
+function setProp(el, key, value) {
+    if (key.startsWith("on")) {
+        const type = key.slice(2).toLowerCase();
+        const store = el._events || (el._events = {});
 
-    if (!hook.set) {
-        hook.set = (next) => {
-            const value =
-                typeof next === "function" ? next(hook.value) : next;
-
-            if (Object.is(hook.value, value)) return;
-
-            hook.value = value;
-            comp.update();
-        };
-    }
-
-    return [hook.value, hook.set];
-}
-
-/**
- * 의존성 배열이 변경될 때마다 사이드이펙트 함수를 실행한다.
- * 이전 실행의 cleanup 함수가 있으면 새 실행 전에 먼저 호출된다.
- * 실제 실행은 렌더 직후 FunctionComponent._flushEffects에서 일어난다.
- *
- * @param {function} fn - 실행할 이펙트 함수. cleanup 함수를 반환할 수 있다.
- * @param {any[]} deps - 변경 감지 대상 의존성 배열
- */
-export function useEffect(fn, deps) {
-    const hook = getHook({
-        fn: null,
-        deps: undefined,
-        cleanup: null,
-        pending: false,
-    });
-
-    if (depsChanged(hook.deps, deps)) {
-        hook.fn = fn;
-        hook.deps = deps;
-        hook.pending = true;
-    }
-}
-
-/**
- * 의존성 배열이 변경될 때만 fn을 재실행하여 값을 메모이제이션한다.
- * 렌더 중 동기적으로 실행되며, 비용이 큰 계산을 반복하지 않기 위해 사용한다.
- *
- * @template T
- * @param {function(): T} fn - 메모이제이션할 값을 계산하는 함수
- * @param {any[]} deps - 변경 감지 대상 의존성 배열
- * @returns {T} 계산된 메모이제이션 값
- */
-export function useMemo(fn, deps) {
-    const hook = getHook({
-        value: undefined,
-        deps: undefined,
-        initialized: false,
-    });
-
-    if (!hook.initialized || depsChanged(hook.deps, deps)) {
-        hook.value = fn();
-        hook.deps = deps;
-        hook.initialized = true;
-    }
-
-    return hook.value;
-}
-
-/**
- * 앱의 진입점. 루트 컴포넌트를 컨테이너에 마운트하고
- * 상태 변경 시 자동으로 리렌더링되도록 연결한다.
- *
- * update()는 rAF와 setTimeout을 모두 등록한다:
- * - rAF: 브라우저 환경에서 프레임 단위로 배칭 (불필요한 중간 렌더 방지)
- * - setTimeout: vitest 등 fake timer 환경에서 rAF가 자동 실행되지 않을 때 flush 보장
- * pendingRender 플래그로 두 타이머 중 하나가 먼저 실행되면 나머지는 no-op이 된다.
- *
- * @param {function(): object} ComponentFn - 루트 컴포넌트 함수 (훅 사용 가능)
- * @param {HTMLElement} container - 마운트 대상 DOM 컨테이너
- * @returns {FunctionComponent} 마운트된 컴포넌트 인스턴스
- */
-export function setRoot(ComponentFn, container) {
-    const instance = new FunctionComponent(ComponentFn);
-    let pendingRender = false;
-
-    instance.update = () => {
-        if (pendingRender) return;
-        pendingRender = true;
-
-        const run = () => {
-            if (!pendingRender) return;
-            pendingRender = false;
-            instance._doUpdate();
-        };
-
-        if (typeof requestAnimationFrame === "function") {
-            requestAnimationFrame(run);
+        // el._events에 이전 핸들러를 캐싱하여 리렌더 시 제거 후 재등록한다.
+        // addEventListener만 반복 호출하면 리스너가 누적되므로 스토어가 필수다.
+        if (store[type]) {
+            el.removeEventListener(type, store[type]);
+            delete store[type];
         }
 
-        setTimeout(run, 0);
+        if (typeof value === "function") {
+            el.addEventListener(type, value);
+            store[type] = value;
+        }
+        return;
+    }
+
+    if (key === "class" || key === "className") {
+        el.className = value ?? "";
+        return;
+    }
+
+    if (key === "style") {
+        el.style.cssText = "";
+        if (typeof value === "string") {
+            el.style.cssText = value;
+        } else if (value && typeof value === "object") {
+            Object.assign(el.style, value);
+        }
+        return;
+    }
+
+    // 폼 요소의 value/checked/selected는 setAttribute로는 초기값만 설정되고
+    // 실제 DOM 상태를 반영하지 못하므로 프로퍼티에 직접 할당한다.
+    if (key === "value" || key === "checked" || key === "selected") {
+        el[key] = value ?? (key === "value" ? "" : false);
+        return;
+    }
+
+    if (value == null || value === false) {
+        el.removeAttribute(key);
+        return;
+    }
+
+    el.setAttribute(key, value === true ? "" : value);
+}
+
+// ─── 9. VNode 팩토리 내부 ────────────────────────────────────────────────────
+
+function tag(name, ...args) {
+    let props = {};
+    let startIdx = 0;
+
+    if (args.length > 0 && isProps(args[0])) {
+        props = {...args[0]};
+        startIdx = 1;
+    }
+
+    const key = props.key !== undefined ? props.key : null;
+    delete props.key;
+
+    return {
+        $$type: "vnode",
+        tag: name,
+        props,
+        children: normalizeChildren(args.slice(startIdx)),
+        key,
     };
+}
 
-    instance.mount(container);
-    return instance;
+// ─── 10. VNode 유틸리티 ───────────────────────────────────────────────────────
+
+function isVNode(arg) {
+    return arg !== null && typeof arg === "object" && arg.$$type === "vnode";
+}
+
+function isProps(arg) {
+    // vnode 객체와 자식 배열을 props로 오인하지 않도록 모두 배제한다
+    return (
+        arg !== null &&
+        typeof arg === "object" &&
+        !isVNode(arg) &&
+        !Array.isArray(arg)
+    );
+}
+
+function isText(node) {
+    return typeof node === "string" || typeof node === "number";
+}
+
+function isKeyed(node) {
+    return node && typeof node === "object" && node.key != null;
+}
+
+function normalizeChildren(args) {
+    // 조건부 렌더링에서 false/true가 children에 포함되는 것을 방지한다
+    // 예: condition && div() → condition이 false이면 false가 그대로 전달됨
+    return args
+        .flat()
+        .filter((c) => c !== null && c !== undefined && typeof c !== "boolean");
 }

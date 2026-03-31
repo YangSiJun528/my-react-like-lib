@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { tags, createElement, render, diff, applyPatches, setRoot, useState, useEffect, useMemo } from "./lib.js";
+import { tags, createElement, diff, applyPatches, setRoot, useState, useEffect, useMemo } from "./lib.js";
 
 const { div, p, button, span, ul, li, input, a, h1 } = tags;
 
@@ -492,7 +492,8 @@ describe("applyPatches()", () => {
   it("CREATE 패치 → DOM에 새 노드 추가", () => {
     // Arrange
     const container = document.createElement("div");
-    render(div(), container);
+    container.innerHTML = "";
+    container.appendChild(createElement(div()));
     const domDiv = container.firstChild;
     const patches = [{ type: "CREATE", path: [0], newVNode: span("added") }];
 
@@ -506,7 +507,8 @@ describe("applyPatches()", () => {
   it("REMOVE 패치 → DOM에서 노드 삭제", () => {
     // Arrange
     const container = document.createElement("div");
-    render(div(span("a"), span("b")), container);
+    container.innerHTML = "";
+    container.appendChild(createElement(div(span("a"), span("b"))));
     const domDiv = container.firstChild;
     const patches = [{ type: "REMOVE", path: [1] }];
 
@@ -520,7 +522,8 @@ describe("applyPatches()", () => {
   it("REPLACE 패치 → 서브트리 교체", () => {
     // Arrange
     const container = document.createElement("div");
-    render(div(span("old")), container);
+    container.innerHTML = "";
+    container.appendChild(createElement(div(span("old"))));
     const domDiv = container.firstChild;
     const newVNode = { $$type: "vnode", tag: "p", props: {}, children: ["new"], key: null };
     const patches = [{ type: "REPLACE", path: [0], newVNode }];
@@ -535,7 +538,8 @@ describe("applyPatches()", () => {
   it("PROPS 패치 → 속성 변경/삭제", () => {
     // Arrange
     const container = document.createElement("div");
-    render(div({ class: "old", id: "x" }), container);
+    container.innerHTML = "";
+    container.appendChild(createElement(div({ class: "old", id: "x" })));
     const domDiv = container.firstChild;
     const patches = [{
       type: "PROPS",
@@ -556,7 +560,8 @@ describe("applyPatches()", () => {
     // Arrange
     const container = document.createElement("div");
     let clicks = 0;
-    render(button({ onClick: () => { clicks++; } }, "click"), container);
+    container.innerHTML = "";
+    container.appendChild(createElement(button({ onClick: () => { clicks++; } }, "click")));
     const domButton = container.firstChild;
     const patches = [{
       type: "PROPS",
@@ -576,7 +581,8 @@ describe("applyPatches()", () => {
   it("TEXT 패치 → 텍스트 노드 변경", () => {
     // Arrange
     const container = document.createElement("div");
-    render(div("hello"), container);
+    container.innerHTML = "";
+    container.appendChild(createElement(div("hello")));
     const domDiv = container.firstChild;
     const patches = [{ type: "TEXT", path: [0], text: "world" }];
 
@@ -590,7 +596,8 @@ describe("applyPatches()", () => {
   it("여러 패치 순서대로 적용 — PROPS + TEXT 복합", () => {
     // Arrange
     const container = document.createElement("div");
-    render(div({ class: "old" }, "hello"), container);
+    container.innerHTML = "";
+    container.appendChild(createElement(div({ class: "old" }, "hello")));
     const domDiv = container.firstChild;
     const patches = [
       { type: "PROPS", path: [], props: { class: "new" }, removedProps: [] },
@@ -608,7 +615,8 @@ describe("applyPatches()", () => {
   it("REMOVE 뒤→앞 적용 — 여러 인덱스 동시 삭제 시 앞 요소만 남음", () => {
     // Arrange: div(a, b, c) 에서 인덱스 [1]과 [2]를 REMOVE → span("a")만 남아야 함
     const container = document.createElement("div");
-    render(div(span("a"), span("b"), span("c")), container);
+    container.innerHTML = "";
+    container.appendChild(createElement(div(span("a"), span("b"), span("c"))));
     const domDiv = container.firstChild;
     const patches = [
       { type: "REMOVE", path: [1] },
@@ -625,7 +633,8 @@ describe("applyPatches()", () => {
   it("루트 REPLACE 패치 시 새 루트 노드를 반환한다", () => {
     // Arrange
     const container = document.createElement("div");
-    render(div("old"), container);
+    container.innerHTML = "";
+    container.appendChild(createElement(div("old")));
     const domRoot = container.firstChild;
     const newVNode = span("new");
     const patches = [{ type: "REPLACE", path: [], newVNode }];
@@ -639,13 +648,14 @@ describe("applyPatches()", () => {
   });
 });
 
-describe("통합: render → diff → applyPatches", () => {
-  it("텍스트 변경 — render 후 diff+applyPatches 하면 DOM이 새 vnode와 일치한다", () => {
+describe("통합: createElement → diff → applyPatches", () => {
+  it("텍스트 변경 — createElement 마운트 후 diff+applyPatches 하면 DOM이 새 vnode와 일치한다", () => {
     // Arrange
     const container = document.createElement("div");
     const oldVNode = div("hello");
     const newVNode = div("world");
-    render(oldVNode, container);
+    container.innerHTML = "";
+    container.appendChild(createElement(oldVNode));
     const domRoot = container.firstChild;
 
     // Act
@@ -656,12 +666,13 @@ describe("통합: render → diff → applyPatches", () => {
     expect(domRoot.outerHTML).toBe(createElement(newVNode).outerHTML);
   });
 
-  it("속성 변경 — render 후 diff+applyPatches 하면 DOM이 새 vnode와 일치한다", () => {
+  it("속성 변경 — createElement 마운트 후 diff+applyPatches 하면 DOM이 새 vnode와 일치한다", () => {
     // Arrange
     const container = document.createElement("div");
     const oldVNode = div({ class: "old" }, "text");
     const newVNode = div({ class: "new" }, "text");
-    render(oldVNode, container);
+    container.innerHTML = "";
+    container.appendChild(createElement(oldVNode));
     const domRoot = container.firstChild;
 
     // Act
@@ -672,12 +683,13 @@ describe("통합: render → diff → applyPatches", () => {
     expect(domRoot.outerHTML).toBe(createElement(newVNode).outerHTML);
   });
 
-  it("자식 추가 — render 후 diff+applyPatches 하면 DOM이 새 vnode와 일치한다", () => {
+  it("자식 추가 — createElement 마운트 후 diff+applyPatches 하면 DOM이 새 vnode와 일치한다", () => {
     // Arrange
     const container = document.createElement("div");
     const oldVNode = ul(li("1"), li("2"));
     const newVNode = ul(li("1"), li("2"), li("3"));
-    render(oldVNode, container);
+    container.innerHTML = "";
+    container.appendChild(createElement(oldVNode));
     const domRoot = container.firstChild;
 
     // Act
@@ -688,7 +700,7 @@ describe("통합: render → diff → applyPatches", () => {
     expect(domRoot.outerHTML).toBe(createElement(newVNode).outerHTML);
   });
 
-  it("key 기반 리스트 재정렬 — render 후 diff+applyPatches 하면 DOM이 새 순서와 일치한다", () => {
+  it("key 기반 리스트 재정렬 — createElement 마운트 후 diff+applyPatches 하면 DOM이 새 순서와 일치한다", () => {
     // Arrange
     const container = document.createElement("div");
     const oldVNode = ul(
@@ -701,7 +713,8 @@ describe("통합: render → diff → applyPatches", () => {
       li({ key: "a" }, "항목A"),
       li({ key: "b" }, "항목B"),
     );
-    render(oldVNode, container);
+    container.innerHTML = "";
+    container.appendChild(createElement(oldVNode));
     const domRoot = container.firstChild;
 
     // Act
