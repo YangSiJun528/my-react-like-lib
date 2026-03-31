@@ -207,13 +207,9 @@ class FunctionComponent {
  * @returns {object[]} 적용할 패치 목록
  */
 export function diff(oldNode, newNode, path = []) {
-    if (oldNode == null && newNode != null) {
-        return [{type: "CREATE", path, newVNode: newNode}];
-    }
-
-    if (oldNode != null && newNode == null) {
-        return [{type: "REMOVE", path}];
-    }
+    if (oldNode == null && newNode == null) return [];
+    if (oldNode == null) return [{type: "CREATE", path, newVNode: newNode}];
+    if (newNode == null) return [{type: "REMOVE", path}];
 
     if (isText(oldNode) && isText(newNode)) {
         return oldNode !== newNode
@@ -221,13 +217,16 @@ export function diff(oldNode, newNode, path = []) {
             : [];
     }
 
-    if (oldNode.tag !== newNode.tag) {
+    const {tag: oldTag, props: oldProps, children: oldChildren} = oldNode;
+    const {tag: newTag, props: newProps, children: newChildren} = newNode;
+
+    if (oldTag !== newTag) {
         return [{type: "REPLACE", path, newVNode: newNode}];
     }
 
     return [
-        ...diffProps(oldNode.props, newNode.props, path),
-        ...diffChildren(oldNode.children || [], newNode.children || [], path),
+        ...diffProps(oldProps, newProps, path),
+        ...diffChildren(oldChildren || [], newChildren || [], path),
     ];
 }
 
@@ -290,7 +289,8 @@ export function applyPatches(domNode, patches) {
             // order 배열 순서대로 appendChild를 반복하면 자식 순서가 새 배열 순서로 재배치된다.
             // 예) children = [A, B, C], order = [2, 0, 1] → C, A, B 순으로 끝에 붙임 → C-A-B
             for (const i of patch.order) {
-                parent.appendChild(children[i]);
+                const child = children[i];
+                if (child) parent.appendChild(child);
             }
             continue;
         }
@@ -352,10 +352,11 @@ export function createElement(vnode) {
         return document.createTextNode(String(vnode));
     }
 
-    const el = document.createElement(vnode.tag);
-    applyProps(el, vnode.props);
+    const {tag, props, children} = vnode;
+    const el = document.createElement(tag);
+    applyProps(el, props);
 
-    for (const child of vnode.children) {
+    for (const child of children) {
         el.appendChild(createElement(child));
     }
 
