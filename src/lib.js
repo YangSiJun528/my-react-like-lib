@@ -4,10 +4,10 @@
  * 앱의 진입점. 루트 컴포넌트를 컨테이너에 마운트하고
  * 상태 변경 시 자동으로 리렌더링되도록 연결한다.
  *
- * update()는 rAF와 setTimeout을 모두 등록한다:
+ * update()는 rAF로 배칭한다:
  * - rAF: 브라우저 환경에서 프레임 단위로 배칭 (불필요한 중간 렌더 방지)
- * - setTimeout: vitest 등 fake timer 환경에서 rAF가 자동 실행되지 않을 때 flush 보장
- * pendingRender 플래그로 두 타이머 중 하나가 먼저 실행되면 나머지는 no-op이 된다.
+ * - vitest: vi.useFakeTimers()가 rAF도 교체하므로 vi.runAllTimers()로 flush 가능
+ * pendingRender 플래그로 중복 등록을 방지한다.
  *
  * @param {function(): object} ComponentFn - 루트 컴포넌트 함수 (훅 사용 가능)
  * @param {HTMLElement} container - 마운트 대상 DOM 컨테이너
@@ -30,8 +30,6 @@ export function setRoot(ComponentFn, container) {
         if (typeof requestAnimationFrame === "function") {
             requestAnimationFrame(run);
         }
-
-        setTimeout(run, 0);
     };
 
     instance.mount(container);
