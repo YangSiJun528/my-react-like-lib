@@ -21,14 +21,14 @@ export function setRoot(ComponentFn, container) {
         if (pendingRender) return;
         pendingRender = true;
 
-        const run = () => {
-            if (!pendingRender) return;
-            pendingRender = false;
-            instance._doUpdate();
-        };
-
+        // rAF가 없는 환경(순수 Node.js 등)에서는 pendingRender가 해제되지 않아
+        // 이후 update() 호출이 모두 무시된다. 이 라이브러리는 브라우저 전용이다.
         if (typeof requestAnimationFrame === "function") {
-            requestAnimationFrame(run);
+            requestAnimationFrame(() => {
+                if (!pendingRender) return;
+                pendingRender = false;
+                instance._doUpdate();
+            });
         }
     };
 
@@ -169,6 +169,7 @@ class FunctionComponent {
         });
     }
 
+    // container: 초기 마운트 시 명시적으로 전달, 재렌더 시는 기존 domNode의 부모를 재사용
     _commit(newVNode, container = this.domNode?.parentNode) {
         if (!this.domNode) {
             this.domNode = createElement(newVNode);
