@@ -366,6 +366,12 @@ export function createElement(vnode) {
 // 현재 렌더링 중인 컴포넌트 인스턴스. 훅이 올바른 인스턴스에 접근할 수 있도록 한다.
 let currentComponent = null;
 
+/**
+ * 현재 컴포넌트의 훅 슬롯을 반환한다.
+ * hookIndex를 증가시키며 순서 기반으로 슬롯을 할당하고, 첫 호출 시 init 값으로 초기화한다.
+ * @param {*} init - 해당 슬롯이 처음 생성될 때 사용할 초기값
+ * @returns {*} 현재 훅 인덱스에 해당하는 슬롯 값
+ */
 function getHook(init) {
     if (!currentComponent) {
         throw new Error("훅은 컴포넌트 내부에서만 사용 가능");
@@ -381,6 +387,13 @@ function getHook(init) {
     return currentComponent.hooks[i];
 }
 
+/**
+ * 이전 의존성 배열과 새 의존성 배열을 비교하여 변경 여부를 반환한다.
+ * 배열이 없거나 길이가 다르거나, 하나 이상의 요소가 달라지면 true를 반환한다.
+ * @param {Array|null|undefined} prev - 이전 렌더 시점의 의존성 배열
+ * @param {Array|null|undefined} next - 현재 렌더 시점의 의존성 배열
+ * @returns {boolean} 의존성이 변경되었으면 true, 동일하면 false
+ */
 const depsChanged = (prev, next) =>
     !prev ||
     !next ||
@@ -389,6 +402,14 @@ const depsChanged = (prev, next) =>
 
 // ─── 7. diff 내부 ─────────────────────────────────────────────────────────────
 
+/**
+ * 이전 props와 새 props를 비교하여 변경·삭제된 항목을 패치로 반환한다.
+ * 변경 사항이 없으면 빈 배열을 반환한다.
+ * @param {Object} oldProps - 이전 렌더의 props 객체
+ * @param {Object} newProps - 새 렌더의 props 객체
+ * @param {Array<number>} path - 패치 위치를 나타내는 vnode 트리 경로
+ * @returns {Array<Object>} PROPS 타입 패치 배열 (변경 없으면 빈 배열)
+ */
 function diffProps(oldProps, newProps, path) {
     const changedProps = {};
     const removedProps = [];
@@ -412,6 +433,14 @@ function diffProps(oldProps, newProps, path) {
     return [];
 }
 
+/**
+ * 이전 자식 배열과 새 자식 배열을 비교하여 필요한 패치 목록을 반환한다.
+ * key가 모두 존재하면 keyed diff를, 그렇지 않으면 인덱스 기반 diff를 수행한다.
+ * @param {Array} oldChildren - 이전 렌더의 자식 vnode 배열
+ * @param {Array} newChildren - 새 렌더의 자식 vnode 배열
+ * @param {Array<number>} path - 패치 위치를 나타내는 vnode 트리 경로
+ * @returns {Array<Object>} CREATE / REMOVE / REORDER 등의 패치 배열
+ */
 function diffChildren(oldChildren, newChildren, path) {
     const patches = [];
     const keyed =
@@ -503,12 +532,25 @@ function diffChildren(oldChildren, newChildren, path) {
 
 // ─── 8. DOM 속성 처리 ────────────────────────────────────────────────────────
 
+/**
+ * props 객체의 모든 키-값 쌍을 DOM 요소에 적용한다.
+ * 각 항목은 setProp으로 위임하여 처리한다.
+ * @param {HTMLElement} el - props를 적용할 DOM 요소
+ * @param {Object} props - 적용할 props 객체 (이벤트, 클래스, 스타일 등 포함)
+ */
 function applyProps(el, props) {
     for (const [key, value] of Object.entries(props)) {
         setProp(el, key, value);
     }
 }
 
+/**
+ * DOM 요소에 단일 prop을 적용한다.
+ * 이벤트 핸들러(on*), class, style, 폼 상태 프로퍼티, 일반 어트리뷰트를 구분하여 처리한다.
+ * @param {HTMLElement} el - prop을 적용할 DOM 요소
+ * @param {string} key - prop 이름 (예: "onClick", "class", "style", "value" 등)
+ * @param {*} value - prop 값 (함수, 문자열, 객체, null 등)
+ */
 function setProp(el, key, value) {
     if (key.startsWith("on")) {
         const type = key.slice(2).toLowerCase();
@@ -560,6 +602,13 @@ function setProp(el, key, value) {
 
 // ─── 9. VNode 팩토리 내부 ────────────────────────────────────────────────────
 
+/**
+ * 주어진 태그 이름과 인자로 vnode 객체를 생성하는 팩토리 함수.
+ * 첫 번째 인자가 props 객체이면 분리하고, 나머지를 자식으로 정규화한다.
+ * @param {string} name - HTML 태그 이름 (예: "div", "span")
+ * @param {...*} args - props 객체(선택)와 자식 노드들(문자열·숫자·vnode·배열 등)
+ * @returns {{$$type: string, tag: string, props: Object, children: Array, key: *}} 생성된 vnode 객체
+ */
 function tag(name, ...args) {
     let props = {};
     let startIdx = 0;
@@ -583,10 +632,21 @@ function tag(name, ...args) {
 
 // ─── 10. VNode 유틸리티 ───────────────────────────────────────────────────────
 
+/**
+ * 주어진 값이 vnode 객체인지 확인한다.
+ * @param {*} arg - 검사할 값
+ * @returns {boolean} $$type이 "vnode"인 객체이면 true
+ */
 function isVNode(arg) {
     return arg !== null && typeof arg === "object" && arg.$$type === "vnode";
 }
 
+/**
+ * 주어진 값이 props 객체인지 확인한다.
+ * vnode나 배열은 props로 간주하지 않는다.
+ * @param {*} arg - 검사할 값
+ * @returns {boolean} null이 아닌 일반 객체(vnode·배열 제외)이면 true
+ */
 function isProps(arg) {
     // vnode 객체와 자식 배열을 props로 오인하지 않도록 모두 배제한다
     return (
@@ -597,14 +657,30 @@ function isProps(arg) {
     );
 }
 
+/**
+ * 주어진 노드가 텍스트 노드(문자열 또는 숫자)인지 확인한다.
+ * @param {*} node - 검사할 노드
+ * @returns {boolean} 문자열이나 숫자이면 true
+ */
 function isText(node) {
     return typeof node === "string" || typeof node === "number";
 }
 
+/**
+ * 주어진 노드가 key 속성을 가진 keyed vnode인지 확인한다.
+ * @param {*} node - 검사할 노드
+ * @returns {boolean} key가 null/undefined가 아닌 객체이면 true
+ */
 function isKeyed(node) {
     return node && typeof node === "object" && node.key != null;
 }
 
+/**
+ * 자식 인자 배열을 평탄화하고, 렌더링 불필요한 값을 제거하여 정규화한다.
+ * null, undefined, boolean 값을 필터링한다.
+ * @param {Array} args - tag 함수에서 받은 자식 인자 목록 (중첩 배열 포함 가능)
+ * @returns {Array} 평탄화·필터링된 자식 노드 배열
+ */
 function normalizeChildren(args) {
     // 조건부 렌더링에서 false/true가 children에 포함되는 것을 방지한다
     // 예: condition && div() → condition이 false이면 false가 그대로 전달됨
