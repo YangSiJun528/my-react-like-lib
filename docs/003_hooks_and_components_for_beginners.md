@@ -185,6 +185,29 @@ export function useState(initialValue) {
 }
 ```
 
+### Object.is는 얕은 비교다
+
+setter 안의 `Object.is(hook.value, value)`는 **두 값이 "같은지"** 를 판단해 불필요한 리렌더를 막는다. 숫자나 문자열 같은 원시값은 내용이 같으면 `Object.is`도 같다고 판단한다.
+
+그런데 **객체나 배열은 다르다.** 내용이 똑같아도 렌더마다 새로 만들어진 객체는 `Object.is` 기준으로 "다른 값"이다:
+
+```js
+Object.is(42, 42)           // true  — 같은 숫자
+Object.is("hi", "hi")       // true  — 같은 문자열
+Object.is({ x: 1 }, { x: 1 }) // false — 내용은 같지만 다른 객체
+```
+
+따라서 아래처럼 렌더마다 새 객체를 만들어 상태로 넘기면, 내용이 변하지 않았어도 매번 리렌더가 발생한다:
+
+```js
+// ❌ 렌더마다 새 객체 → Object.is가 항상 false → 항상 리렌더
+setUser({ name: "Alice" });
+
+// ✅ 내용이 같다면 이전 객체를 그대로 재사용하거나, 필요할 때만 호출
+```
+
+같은 이유로 `useEffect`나 `useMemo`의 **deps 배열에 객체·배열을 넣을 때도 주의**해야 한다. 렌더마다 새로 만들어진 배열/객체는 deps가 "항상 바뀐 것"으로 인식되어 매 렌더마다 이펙트가 실행되거나 메모가 재계산된다.
+
 ---
 
 ## 6. useMemo가 왜 필요한가
@@ -230,3 +253,13 @@ function Dashboard({ data }) {
 ```
 
 이제 "다크 모드" 버튼을 클릭해도 `data`가 바뀌지 않았으므로 `computeExpensiveStats`는 다시 실행되지 않는다.
+
+---
+
+## 7. 더 깊이 공부하려면
+
+이 라이브러리의 `useState`, `useEffect`, `useMemo`는 React의 동명 훅과 동일한 개념에서 출발한다. React 공식 문서는 각 훅의 동작 방식, 주의 사항, 실전 패턴을 상세히 다루고 있으니 함께 참고하면 이해가 깊어진다.
+
+- **useState**: https://react.dev/reference/react/useState
+- **useEffect**: https://react.dev/reference/react/useEffect
+- **useMemo**: https://react.dev/reference/react/useMemo
