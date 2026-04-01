@@ -256,7 +256,154 @@ function Dashboard({ data }) {
 
 ---
 
-## 7. 더 깊이 공부하려면
+## 7. lib.js에서 자주 보이는 JS 문법 정리
+
+`src/lib.js`를 읽다 보면 JavaScript 특유의 문법이 많이 등장한다. 각 문법이 코드 어디에 쓰이는지 함께 설명한다.
+
+### 7-1. `function` 선언과 화살표 함수
+
+JS에는 함수를 정의하는 방식이 두 가지다.
+
+```js
+// function 선언: 이름이 있고, 파일 어디서든 호출 가능
+function tag(name, ...args) { ... }
+
+// 화살표 함수: 짧은 표현, 주로 값으로 전달되거나 내부에서만 씀
+const depsChanged = (prev, next) => !prev || ...;
+hook.set = (next) => { ... };
+```
+
+`lib.js`에서 `export function setRoot(...)`, `function diffChildren(...)` 등은 function 선언이고, `getHook` 내부의 콜백이나 setter는 화살표 함수로 작성되어 있다. 두 방식의 차이 중 실용적으로 중요한 것은 화살표 함수는 자신만의 `this`를 갖지 않는다는 점인데, `lib.js`에서는 `this`를 클래스 메서드 안에서만 쓰므로 혼동할 일이 적다.
+
+### 7-2. `class`와 `constructor`
+
+`class`는 관련 데이터와 메서드를 묶는 문법이다.
+
+```js
+class FunctionComponent {
+    constructor(fn) {    // new FunctionComponent(fn) 호출 시 자동 실행
+        this.fn = fn;    // this는 "새로 만들어진 이 객체"를 가리킨다
+        this.hooks = [];
+    }
+
+    _render() { ... }    // 인스턴스 메서드
+}
+
+const instance = new FunctionComponent(MyApp); // 인스턴스 생성
+```
+
+`this.hooks`처럼 `this.`를 붙이면 그 인스턴스에 속한 속성이 된다. `_`로 시작하는 메서드(`_render`, `_commit` 등)는 "외부에서 직접 호출하지 말 것"을 관례적으로 표시한 것이다(JS 언어 차원에서 강제되지는 않는다).
+
+### 7-3. 구조 분해 할당(Destructuring)
+
+객체나 배열에서 값을 꺼내 변수에 바로 담는 문법이다.
+
+```js
+// 객체 구조 분해
+const { tag, props, children } = oldNode;
+// 위는 아래와 동일하다:
+// const tag = oldNode.tag;
+// const props = oldNode.props;
+// const children = oldNode.children;
+
+// 배열 구조 분해
+const [count, setCount] = useState(0);
+// const count = useState(0)[0];
+// const setCount = useState(0)[1]; 와 동일
+```
+
+`useState`가 배열을 반환하기 때문에 배열 구조 분해로 값을 꺼낸다.
+
+### 7-4. 나머지 매개변수와 전개 연산자(`...`)
+
+`...`는 문맥에 따라 두 가지로 쓰인다.
+
+```js
+// 나머지 매개변수(rest): 함수 인자를 배열로 수집
+function tag(name, ...args) {
+    // args는 name 이후 전달된 모든 인자의 배열
+}
+
+// 전개(spread): 배열이나 객체를 펼쳐 넣음
+[...path, i]          // path 배열의 모든 요소 뒤에 i를 붙인 새 배열
+{...args[0]}          // args[0] 객체의 모든 속성을 복사한 새 객체
+patches.push(...diff()); // diff()가 반환한 배열의 요소들을 하나씩 push
+```
+
+### 7-5. 옵셔널 체이닝(`?.`)과 널 병합(`??`)
+
+값이 `null`이거나 `undefined`일 때를 안전하게 처리하는 단축 문법이다.
+
+```js
+// ?.: 앞의 값이 null/undefined면 에러 없이 undefined 반환
+hook.cleanup?.();          // cleanup이 없으면 그냥 넘어감
+root.parentNode?.removeChild(root);  // parentNode가 없으면 그냥 넘어감
+
+// ??: 앞의 값이 null/undefined일 때만 뒤의 기본값 사용
+hook.cleanup = hook.fn?.() ?? null;  // fn()이 undefined를 반환하면 null로
+const ai = a.path[a.path.length - 1] ?? 0;  // 인덱스가 없으면 0
+```
+
+### 7-6. 템플릿 리터럴
+
+백틱(`` ` ``)으로 문자열을 만들면 `${...}` 안에 JS 표현식을 바로 넣을 수 있다.
+
+```js
+`카운트: ${count}`     // "카운트: 3" 처럼 값이 삽입됨
+`안녕, ${name}!`
+```
+
+docs/003의 예시 코드에서도 사용된다.
+
+### 7-7. `typeof`와 `instanceof`
+
+값의 타입을 런타임에 확인하는 연산자다.
+
+```js
+typeof next === "function"   // next가 함수이면 true
+typeof value === "string"    // value가 문자열이면 true
+typeof value === "object"    // value가 객체(또는 null)이면 true
+```
+
+`lib.js`에서 props인지, 텍스트인지, 이벤트 핸들러인지를 구분할 때 모두 `typeof`를 활용한다.
+
+### 7-8. `export`와 `import`
+
+`export`가 붙은 함수나 변수는 다른 파일에서 가져다 쓸 수 있다.
+
+```js
+// lib.js
+export function useState(...) { ... }
+export const tags = ...;
+
+// 사용하는 파일
+import { useState, tags } from './lib.js';
+```
+
+`lib.js`에서 `export`가 없는 함수(`diffChildren`, `getHook` 등)는 파일 내부에서만 쓰이는 내부 구현이다.
+
+### 7-9. `Map`과 `Set`
+
+배열보다 특화된 자료구조다.
+
+```js
+// Map: key → value 쌍 (Object와 달리 어떤 값도 key가 될 수 있음)
+const oldKeyMap = new Map();
+oldKeyMap.set("item-1", 0);  // key, value 저장
+oldKeyMap.get("item-1");     // 0 반환
+oldKeyMap.has("item-2");     // false
+
+// Set: 중복 없는 값의 집합
+const usedOldIndices = new Set();
+usedOldIndices.add(2);
+usedOldIndices.has(2);       // true
+```
+
+`diffChildren`에서 keyed diff를 구현할 때 O(1) 조회를 위해 사용한다.
+
+---
+
+## 8. 더 깊이 공부하려면
 
 이 라이브러리의 `useState`, `useEffect`, `useMemo`는 React의 동명 훅과 동일한 개념에서 출발한다. React 공식 문서는 각 훅의 동작 방식, 주의 사항, 실전 패턴을 상세히 다루고 있으니 함께 참고하면 이해가 깊어진다.
 
