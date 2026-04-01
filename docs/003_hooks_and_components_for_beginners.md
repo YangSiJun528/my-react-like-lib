@@ -190,30 +190,7 @@ function App() {
 
 결과적으로 타이머처럼 1초마다 상태가 변하는 경우, 실제로 화면에서 바뀐 것은 숫자 하나뿐이지만 이벤트 핸들러를 가진 모든 버튼·인풋이 패치 목록에 올라간다.
 
-React에서는 `useCallback` 훅으로 함수 참조를 deps가 변경될 때만 재생성해 이 문제를 해결한다. 이 라이브러리도 `useCallback`을 지원한다 — 내부적으로 `useMemo(() => fn, deps)`와 동일하다.
-
-```js
-function App() {
-    const [tasks, setTasks] = useState([]);
-
-    // toggleTask는 tasks가 바뀔 때만 새 함수 참조가 만들어진다
-    const toggleTask = useCallback((id) => {
-        setTasks(current => current.map(t => t.id === id ? {...t, done: !t.done} : t));
-    }, []);
-
-    return ul(...tasks.map(task =>
-        TaskItem({ task, onToggle: toggleTask })
-    ));
-}
-```
-
-`useCallback`으로 감싸면 deps가 변경되지 않는 한 이전 렌더와 동일한 함수 참조가 반환되어, `diffProps`에서 PROPS 패치가 생성되지 않는다.
-
-**deps 설계 원칙:** `useCallback`의 deps는 "함수 안에서 읽는 외부 변수 중 렌더마다 변할 수 있는 것"을 넣는다.
-
-- `toggleTask`, `removeTask` — 함수 안에서 `setTasks`의 함수형 업데이트만 사용하므로 deps `[]` (setTasks 자체는 렌더마다 바뀌지 않는다)
-- `addTask` — 함수 안에서 `draft`를 직접 읽으므로 deps `[draft]` (draft가 바뀌면 새 클로저가 필요)
-- `resetTimer`, `toggleTimer` — setter만 호출하므로 deps `[]`
+React에서는 `useCallback` 훅으로 함수 참조를 deps가 변경될 때만 재생성해 이 문제를 부분적으로 해결한다. 하지만 `TaskItem`처럼 `task.id`를 캡처해야 하는 per-item 핸들러는 useCallback만으로 해결되지 않는다 — 이 문제의 근본 원인과 React의 해법은 `docs/005`에서 다룬다.
 
 ---
 

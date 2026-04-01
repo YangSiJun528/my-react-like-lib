@@ -143,37 +143,4 @@ Object.is(fn_A, fn_B) → false → PROPS 패치 생성
 
 **DOM에 미치는 영향:** PROPS 패치는 실제로 `removeEventListener` → `addEventListener`를 다시 실행한다. 기능은 올바르지만 불필요한 DOM 조작이 발생한다.
 
-**React의 해법:** `useCallback(fn, deps)` — deps가 바뀔 때만 함수를 재생성해 참조를 안정적으로 유지한다. `useCallback`은 `useMemo(() => fn, deps)`와 동일하며, 이 라이브러리에 추가하려면 한 줄이면 된다:
-
-```js
-export function useCallback(fn, deps) {
-    return useMemo(() => fn, deps);
-}
-```
-
-이 라이브러리는 `useCallback`을 지원한다. `useMemo(() => fn, deps)`와 동일하며, deps가 바뀔 때만 함수 참조를 교체한다.
-
-```js
-// useCallback 없이: 렌더마다 새 함수 → PROPS 패치 발생
-const handleClick = () => doSomething();
-
-// useCallback 사용: deps가 같으면 이전 함수 참조 재사용 → PROPS 패치 없음
-const handleClick = useCallback(() => doSomething(), []);
-```
-
-`useCallback`으로 감싼 핸들러는 `diffProps`에서 `Object.is(fn_A, fn_B) → true`가 되어 PROPS 패치가 생성되지 않는다.
-
-**deps 설계:** 함수 안에서 직접 읽는 외부 state/변수는 deps에 포함해야 한다. setter 함수(setState)는 렌더마다 참조가 바뀌지 않으므로 deps에서 생략 가능하다.
-
-```js
-// draft를 직접 읽으므로 deps에 포함
-const addTask = useCallback(() => {
-    const title = draft.trim();
-    ...
-}, [draft]);
-
-// setTasks의 함수형 업데이트만 사용 — 외부 state를 직접 읽지 않음
-const toggleTask = useCallback((id) => {
-    setTasks(current => current.map(...));
-}, []);
-```
+이 라이브러리는 `useCallback`을 구현하지 않는다. 루트 수준 핸들러에는 효과가 있지만, `task.id`처럼 per-item 데이터를 캡처해야 하는 핸들러는 어차피 새 클로저가 필요하기 때문이다. 이 한계의 근본 원인과 React가 Fiber 구조로 이를 해결하는 방식은 `docs/005`에서 다룬다.
