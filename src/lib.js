@@ -4,7 +4,7 @@
  * 앱의 진입점. 루트 컴포넌트를 컨테이너에 마운트하고
  * 상태 변경 시 자동으로 리렌더링되도록 연결한다.
  *
- * update()는 rAF로 배칭한다 (브라우저 전용).
+ * update()는 rAF로 배칭한다 (브라우저 전용 함수라서, node 환경에서는 동작을 안함).
  * pendingRender 플래그로 중복 등록을 방지하며,
  * vitest에서는 vi.useFakeTimers() + vi.runAllTimers()로 flush한다.
  *
@@ -52,8 +52,7 @@ export function useState(initialValue) {
 
     if (!hook.set) {
         hook.set = (next) => {
-            const value =
-                isFunction(next) ? next(hook.value) : next;
+            const value = isFunction(next) ? next(hook.value) : next;
 
             if (Object.is(hook.value, value)) return;
 
@@ -548,11 +547,26 @@ function applyProps(el, props) {
  * @param {*} value - prop 값 (함수, 문자열, 객체, null 등)
  */
 function setProp(el, key, value) {
-    if (key.startsWith("on")) { setEvent(el, key, value); return; }
-    if (key === "class" || key === "className") { setClass(el, value); return; }
-    if (key === "style") { setStyle(el, value); return; }
-    if (key === "value" || key === "checked" || key === "selected") { setFormProp(el, key, value); return; }
-    if (value == null || value === false) { el.removeAttribute(key); return; }
+    if (key.startsWith("on")) {
+        setEvent(el, key, value);
+        return;
+    }
+    if (key === "class" || key === "className") {
+        setClass(el, value);
+        return;
+    }
+    if (key === "style") {
+        setStyle(el, value);
+        return;
+    }
+    if (key === "value" || key === "checked" || key === "selected") {
+        setFormProp(el, key, value);
+        return;
+    }
+    if (value == null || value === false) {
+        el.removeAttribute(key);
+        return;
+    }
     el.setAttribute(key, value === true ? "" : value);
 }
 
@@ -646,11 +660,11 @@ function tag(name, ...args) {
 // ─── 10. 유틸리티 ────────────────────────────────────────────────────────────
 
 const PatchType = Object.freeze({
-    CREATE:  "CREATE",
-    REMOVE:  "REMOVE",
+    CREATE: "CREATE",
+    REMOVE: "REMOVE",
     REPLACE: "REPLACE",
-    PROPS:   "PROPS",
-    TEXT:    "TEXT",
+    PROPS: "PROPS",
+    TEXT: "TEXT",
     REORDER: "REORDER",
 });
 
