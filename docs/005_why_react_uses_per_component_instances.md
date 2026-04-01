@@ -26,6 +26,21 @@ function TaskItem({ task, onToggle, onRemove }) {
 
 결국 per-item 핸들러(`() => onToggle(task.id)`)는 아이템마다 `task.id`를 캡처해야 하므로, 단일 루트 인스턴스 구조에서는 렌더마다 새 클로저를 만드는 것을 피할 방법이 없다.
 
+### _render()가 실행하는 것
+
+단일 인스턴스 구조에서 `_render()`는 루트 컴포넌트 함수(`this.fn()`)를 실행한다. 이 한 번의 호출 안에서 App 내부의 모든 함수 — `TaskItem`, `FilterButton` 등 — 도 함께 실행되며, 그 과정에서 호출되는 모든 훅이 **순서대로** 단일 `hooks[]`에 누적된다.
+
+```
+_render() 실행 중 일어나는 일:
+  useState  → 현재 값을 hooks[] 슬롯에서 읽어 반환 (변경 감지 없음)
+  useEffect → depsChanged 확인 → pending 플래그 설정 (실행은 _flushEffects()에서)
+  useMemo   → depsChanged 확인 → 재계산 또는 캐시 반환
+```
+
+render 예약(`comp.update()`)은 `_render()` 호출 이전에 setter에 의해 이미 완료된 상태다. `_render()`는 "어떻게 그릴지"를 계산할 뿐이며, 렌더 트리거는 이미 결정되어 있다.
+
+이 구조에서 `TaskItem`이 3번 호출되면 3개 × (TaskItem 내 훅 수)만큼 슬롯이 `hooks[]`에 추가된다. 태스크가 하나 추가되면 4번 호출로 바뀌어 슬롯 수 자체가 달라진다 — 이것이 단일 인스턴스에서 per-item 훅이 불안전한 근본 이유다.
+
 ---
 
 ## 2. React의 해법 — 컴포넌트마다 Fiber 인스턴스

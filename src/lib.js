@@ -175,6 +175,11 @@ class FunctionComponent {
         this.hookIndex = 0;
 
         try {
+            // 루트 컴포넌트 함수(예: App)를 실행해 새 vnode 트리를 만든다.
+            // 실행 중 useState는 현재 값을 반환하고,
+            // useEffect는 deps 변경 여부를 확인해 pending 플래그를 설정하며, -> 이후 _flushEffects()로 반영됨.
+            // useMemo는 deps 변경 여부에 따라 재계산 또는 캐시 값을 반환한다.
+            // render 예약(comp.update())은 이 함수 호출 이전에 setter에 의해 이미 완료된 상태다.
             return this.fn();
         } finally {
             currentComponent = null;
