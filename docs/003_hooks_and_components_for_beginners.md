@@ -144,6 +144,35 @@ setName("Alice");
 
 ---
 
+### 3-3. 렌더링 대상은 항상 루트뿐이다
+
+`_render()`는 항상 `this` — 즉 `setRoot`에서 만들어진 루트 `FunctionComponent` 인스턴스 — 를 대상으로 한다. `FunctionComponent` 인스턴스는 앱 전체에서 이 하나뿐이고, `hooks[]`를 가질 수 있는 것도 이 인스턴스뿐이다.
+
+그렇다면 자식처럼 쓰이는 함수는? 예를 들어:
+
+```js
+function Header() {
+    return div("헤더");
+}
+
+function App() {
+    const [count, setCount] = useState(0);
+    return div(
+        Header(),          // ← 그냥 함수 호출
+        p(`카운트: ${count}`),
+    );
+}
+setRoot(App, container);
+```
+
+`Header`는 `FunctionComponent` 인스턴스가 아니다. vnode를 반환하는 **일반 함수**일 뿐이다. `setCount`가 호출되면 `App` 전체가 다시 실행되고 — `Header()` 호출도 포함해서 — 새 vnode 트리가 만들어진다.
+
+만약 `Header` 안에서 `useState`를 호출하면 어떻게 될까? `Header`가 `App` 렌더 중에 호출되는 시점엔 `currentComponent`가 `App` 인스턴스이므로, `Header`의 `useState` 호출은 `App`의 `hooks[]`에 슬롯을 할당한다. `Header`의 상태도 결국 `App`에 귀속되는 것이다.
+
+**계층 구조(여러 `FunctionComponent` 인스턴스)는 현재 지원되지 않는다.** React는 컴포넌트마다 별도의 Fiber 노드를 두어 각자의 상태를 독립적으로 관리하지만, 이 라이브러리는 단일 루트 인스턴스만 존재하도록 의도적으로 단순하게 유지되어 있다.
+
+---
+
 ## 4. 훅 규칙을 어기면 무슨 일이 생기나
 
 > 관련 개념: `docs/002` 3절
@@ -586,4 +615,5 @@ usedOldIndices.has(2);       // true
 - **hooks**: https://react.dev/reference/react/hooks
 - **useState**: https://react.dev/reference/react/useState
 - **useEffect**: https://react.dev/reference/react/useEffect
+  - 언제 useEffect를 사용하는게 적절한가?: https://react.dev/learn/you-might-not-need-an-effect
 - **useMemo**: https://react.dev/reference/react/useMemo
