@@ -209,6 +209,12 @@ function App() {
 
 `useCallback`으로 감싸면 deps가 변경되지 않는 한 이전 렌더와 동일한 함수 참조가 반환되어, `diffProps`에서 PROPS 패치가 생성되지 않는다.
 
+**deps 설계 원칙:** `useCallback`의 deps는 "함수 안에서 읽는 외부 변수 중 렌더마다 변할 수 있는 것"을 넣는다.
+
+- `toggleTask`, `removeTask` — 함수 안에서 `setTasks`의 함수형 업데이트만 사용하므로 deps `[]` (setTasks 자체는 렌더마다 바뀌지 않는다)
+- `addTask` — 함수 안에서 `draft`를 직접 읽으므로 deps `[draft]` (draft가 바뀌면 새 클로저가 필요)
+- `resetTimer`, `toggleTimer` — setter만 호출하므로 deps `[]`
+
 ---
 
 ## 4. 훅 규칙을 어기면 무슨 일이 생기나

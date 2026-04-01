@@ -162,3 +162,18 @@ const handleClick = useCallback(() => doSomething(), []);
 ```
 
 `useCallback`으로 감싼 핸들러는 `diffProps`에서 `Object.is(fn_A, fn_B) → true`가 되어 PROPS 패치가 생성되지 않는다.
+
+**deps 설계:** 함수 안에서 직접 읽는 외부 state/변수는 deps에 포함해야 한다. setter 함수(setState)는 렌더마다 참조가 바뀌지 않으므로 deps에서 생략 가능하다.
+
+```js
+// draft를 직접 읽으므로 deps에 포함
+const addTask = useCallback(() => {
+    const title = draft.trim();
+    ...
+}, [draft]);
+
+// setTasks의 함수형 업데이트만 사용 — 외부 state를 직접 읽지 않음
+const toggleTask = useCallback((id) => {
+    setTasks(current => current.map(...));
+}, []);
+```

@@ -180,7 +180,7 @@
 <div id="root"></div>
 
 <script type="module">
-    import {tags, setRoot, useEffect, useMemo, useState} from "./src/lib.js";
+    import {tags, setRoot, useCallback, useEffect, useMemo, useState} from "./src/lib.js";
 
     const {article, button, div, h1, h2, input, li, main, p, small, span, strong, ul} = tags;
 
@@ -301,7 +301,7 @@
             document.title = "Focus Dashboard · " + summary.openCount + " open · " + sessionLabel;
         }, [summary.openCount, isRunning]);
 
-        function addTask() {
+        const addTask = useCallback(() => {
             const title = draft.trim();
             if (!title) return;
 
@@ -313,24 +313,26 @@
                 return id + 1;
             });
             setDraft("");
-        }
+        }, [draft]);
 
-        function toggleTask(id) {
+        const toggleTask = useCallback((id) => {
             setTasks((current) =>
                 current.map((task) =>
                     task.id === id ? {...task, done: !task.done} : task
                 )
             );
-        }
+        }, []);
 
-        function removeTask(id) {
+        const removeTask = useCallback((id) => {
             setTasks((current) => current.filter((task) => task.id !== id));
-        }
+        }, []);
 
-        function resetTimer() {
+        const resetTimer = useCallback(() => {
             setIsRunning(false);
             setElapsedSeconds(0);
-        }
+        }, []);
+
+        const toggleTimer = useCallback(() => setIsRunning((running) => !running), []);
 
         return main(
             {class: "app-shell"},
@@ -442,7 +444,7 @@
                         {class: "timer-controls"},
                         button(
                             {
-                                onClick: () => setIsRunning((running) => !running),
+                                onClick: toggleTimer,
                                 type: "button",
                             },
                             isRunning ? "일시정지" : "시작"
