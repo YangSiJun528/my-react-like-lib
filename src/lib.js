@@ -1,3 +1,18 @@
+// ─── 0. 디버그 ────────────────────────────────────────────────────────────────
+
+// let _debug = true;
+let _debug = "verbose";
+
+function log(category, ...args) {
+    if (!_debug) return;
+    console.log(`[${category}]`, ...args);
+}
+
+function logVerbose(category, ...args) {
+    if (_debug !== "verbose") return;
+    console.log(`[${category}]`, ...args);
+}
+
 // ─── 1. 공개 진입점 ───────────────────────────────────────────────────────────
 
 /**
@@ -13,6 +28,7 @@
  * @returns {FunctionComponent} 마운트된 컴포넌트 인스턴스
  */
 export function setRoot(ComponentFn, container) {
+    log("mount", `${ComponentFn.name || "(anonymous)"} →`, container);
     const instance = new FunctionComponent(ComponentFn);
     let pendingRender = false;
 
@@ -48,6 +64,7 @@ export function useState(initialValue) {
     // 이 시점에서 currentComponent는 이미 null이 되어 있다.
     // comp를 클로저로 캡처해야 setter가 올바른 컴포넌트를 참조할 수 있다.
     const comp = currentComponent;
+    const hookIdx = comp ? comp.hookIndex : -1;
     const hook = getHook({value: initialValue, set: null});
 
     if (!hook.set) {
@@ -56,6 +73,7 @@ export function useState(initialValue) {
 
             if (Object.is(hook.value, value)) return;
 
+            log("state", `hook#${hookIdx}: ${String(hook.value)} → ${String(value)}`);
             hook.value = value;
             comp.update();
         };
@@ -73,6 +91,7 @@ export function useState(initialValue) {
  * @param {any[]} deps - 변경 감지 대상 의존성 배열
  */
 export function useEffect(fn, deps) {
+    const hookIdx = currentComponent ? currentComponent.hookIndex : -1;
     const hook = getHook({
         fn: null,
         deps: undefined,
@@ -81,6 +100,7 @@ export function useEffect(fn, deps) {
     });
 
     if (depsChanged(hook.deps, deps)) {
+        log("effect", `hook#${hookIdx}: deps changed, scheduled`);
         hook.fn = fn;
         hook.deps = deps;
         hook.pending = true;
@@ -97,6 +117,7 @@ export function useEffect(fn, deps) {
  * @returns {T} 계산된 메모이제이션 값
  */
 export function useMemo(fn, deps) {
+    const hookIdx = currentComponent ? currentComponent.hookIndex : -1;
     const hook = getHook({
         value: undefined,
         deps: undefined,
@@ -104,9 +125,12 @@ export function useMemo(fn, deps) {
     });
 
     if (!hook.initialized || depsChanged(hook.deps, deps)) {
+        log("memo", `hook#${hookIdx}: recomputed`);
         hook.value = fn();
         hook.deps = deps;
         hook.initialized = true;
+    } else {
+        log("memo", `hook#${hookIdx}: hit`);
     }
 
     return hook.value;
@@ -142,6 +166,7 @@ class FunctionComponent {
     _render() {
         // currentComponent를 this로 설정하여 훅이 올바른 인스턴스에 접근하도록 한다.
         // try/finally로 렌더 도중 에러가 나도 currentComponent가 null로 복원된다.
+        log("render", this.fn.name || "(anonymous)");
         currentComponent = this;
         this.hookIndex = 0;
 
@@ -155,6 +180,10 @@ class FunctionComponent {
     _flushEffects() {
         // pending 플래그가 설정된 훅만 실행한다 (의존성이 변경된 것들).
         // cleanup → fn 순서: 이전 이펙트의 정리 작업을 먼저 실행한 뒤 새 이펙트를 실행한다.
+        const pendingCount = this.hooks.filter((h) => h?.pending).length;
+        if (pendingCount > 0) {
+            log("effect", `flushing ${pendingCount} effect(s)`);
+        }
         this.hooks.forEach((hook) => {
             if (!hook?.pending) return;
             hook.cleanup?.();
@@ -166,13 +195,14 @@ class FunctionComponent {
     // container: 초기 마운트 시 명시적으로 전달, 재렌더 시는 기존 domNode의 부모를 재사용
     _commit(newVNode, container = this.domNode?.parentNode) {
         if (!this.domNode) {
+            log("commit", `${this.fn.name || "(anonymous)"} — first render`);
             this.domNode = createElement(newVNode);
             container.appendChild(this.domNode);
         } else {
-            this.domNode = applyPatches(
-                this.domNode,
-                diff(this.vnode, newVNode)
-            );
+            const patches = diff(this.vnode, newVNode);
+            log("commit", `${this.fn.name || "(anonymous)"} — patches: ${patches.length}`);
+            logVerbose("commit", patches.map((p) => p.type));
+            this.domNode = applyPatches(this.domNode, patches);
         }
 
         this.vnode = newVNode;
@@ -233,6 +263,7 @@ export function diff(oldNode, newNode, path = []) {
  * @returns {HTMLElement|Text|null} 패치 적용 후의 루트 DOM 노드 (REPLACE 시 변경될 수 있음)
  */
 export function applyPatches(domNode, patches) {
+    log("patch", `applying ${patches.length} patch(es)`);
     let root = domNode;
 
     // path는 루트 DOM 노드에서 대상 노드까지의 childNodes 인덱스 배열이다.
