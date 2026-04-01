@@ -3,25 +3,176 @@
 <head>
     <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>TODO List</title>
+    <title>Focus Dashboard</title>
     <style>
-        body {
+        :root {
+            color-scheme: light;
             font-family: sans-serif;
-            max-width: 480px;
-            margin: 40px auto;
-            padding: 0 16px;
+            line-height: 1.5;
         }
 
-        ul {
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: #f4f4f1;
+            color: #1d1d1b;
+        }
+
+        button,
+        input {
+            font: inherit;
+        }
+
+        button {
+            cursor: pointer;
+        }
+
+        .app-shell {
+            max-width: 880px;
+            margin: 0 auto;
+            padding: 32px 16px 48px;
+        }
+
+        .app {
+            display: grid;
+            gap: 16px;
+        }
+
+        .panel {
+            background: #ffffff;
+            border: 1px solid #d8d4cc;
+            border-radius: 14px;
+            padding: 16px;
+        }
+
+        .panel h1,
+        .panel h2,
+        .panel p {
+            margin: 0;
+        }
+
+        .hero {
+            display: grid;
+            gap: 8px;
+        }
+
+        .stats {
+            display: grid;
+            gap: 12px;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        }
+
+        .stat {
+            display: grid;
+            gap: 4px;
+        }
+
+        .stat strong {
+            font-size: 1.8rem;
+            line-height: 1;
+        }
+
+        .composer,
+        .timer-controls,
+        .filter-row,
+        .task-item,
+        .task-main {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .composer input {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .composer input,
+        .composer button,
+        .filter-button,
+        .timer-controls button,
+        .task-remove {
+            border: 1px solid #bdb7aa;
+            border-radius: 10px;
+            background: #ffffff;
+            padding: 10px 12px;
+        }
+
+        .filter-row {
+            flex-wrap: wrap;
+            justify-content: space-between;
+        }
+
+        .filter-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .filter-button.is-active {
+            background: #1d1d1b;
+            border-color: #1d1d1b;
+            color: #ffffff;
+        }
+
+        .task-list {
+            display: grid;
+            gap: 10px;
             padding: 0;
+            margin: 0;
             list-style: none;
         }
 
-        li {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin: 4px 0;
+        .task-item {
+            justify-content: space-between;
+            padding: 12px;
+            border: 1px solid #ddd8cf;
+            border-radius: 12px;
+            background: #fcfbf8;
+        }
+
+        .task-main {
+            min-width: 0;
+            flex: 1;
+        }
+
+        .task-copy {
+            min-width: 0;
+            display: grid;
+            gap: 2px;
+        }
+
+        .task-title {
+            word-break: break-word;
+        }
+
+        .task-title.is-done {
+            color: #777268;
+            text-decoration: line-through;
+        }
+
+        .task-meta {
+            color: #5e5a52;
+            font-size: 0.92rem;
+        }
+
+        .timer {
+            display: grid;
+            gap: 12px;
+        }
+
+        .timer-value {
+            font-size: 2rem;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .empty {
+            color: #5e5a52;
+            padding: 6px 0;
         }
     </style>
 </head>
@@ -29,81 +180,297 @@
 <div id="root"></div>
 
 <script type="module">
-    import {tags, setRoot, useState} from "./src/lib.js";
+    import {tags, setRoot, useEffect, useMemo, useState} from "./src/lib.js";
 
-    const {div, h1, input, button, ul, li, span} = tags;
+    const {
+        article,
+        button,
+        div,
+        h1,
+        h2,
+        input,
+        li,
+        main,
+        p,
+        small,
+        span,
+        strong,
+        ul,
+    } = tags;
+
     const container = document.getElementById("root");
+    const initialTasks = [
+        {id: 1, title: "가상 DOM diff 흐름 다시 읽기", done: false},
+        {id: 2, title: "hooks 슬롯 구조를 그림으로 정리하기", done: true},
+        {id: 3, title: "데모 서비스 시나리오 다듬기", done: false},
+    ];
 
-    function TodoItem({todo, onToggle, onRemove}) {
+    function formatDuration(totalSeconds) {
+        const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
+        const seconds = String(totalSeconds % 60).padStart(2, "0");
+        return minutes + ":" + seconds;
+    }
+
+    function StatCard({label, value, note}) {
+        return article(
+            {class: "panel stat"},
+            small(label),
+            strong(String(value)),
+            span({class: "task-meta"}, note)
+        );
+    }
+
+    function FilterButton({label, value, currentFilter, onSelect}) {
+        const isActive = value === currentFilter;
+        return button(
+            {
+                class: isActive ? "filter-button is-active" : "filter-button",
+                onClick: () => onSelect(value),
+                "aria-pressed": isActive,
+                type: "button",
+            },
+            label
+        );
+    }
+
+    function TaskItem({task, onToggle, onRemove}) {
         return li(
-            {key: String(todo.id)},
-            span(
-                {
-                    onClick: () => onToggle(todo.id),
-                    class: "todo_id_" + todo.id,
-                    style: {
-                        cursor: "pointer",
-                        flex: "1",
-                        textDecoration: todo.done ? "line-through" : "none",
-                        color: todo.done ? "#999" : "#000",
-                    },
-                },
-                todo.text
+            {class: "task-item", key: String(task.id)},
+            div(
+                {class: "task-main"},
+                input({
+                    type: "checkbox",
+                    checked: task.done,
+                    onChange: () => onToggle(task.id),
+                }),
+                div(
+                    {class: "task-copy"},
+                    span(
+                        {
+                            class: task.done ? "task-title is-done" : "task-title",
+                        },
+                        task.title
+                    ),
+                    span(
+                        {class: "task-meta"},
+                        task.done ? "완료됨" : "진행 중"
+                    )
+                )
             ),
-            button({onClick: () => onRemove(todo.id)}, "✕")
+            button(
+                {
+                    class: "task-remove",
+                    onClick: () => onRemove(task.id),
+                    type: "button",
+                },
+                "삭제"
+            )
         );
     }
 
     function App() {
-        const [todos, setTodos] = useState([]);
-        const [nextId, setNextId] = useState(1);
-        const [inputValue, setInputValue] = useState("");
+        const [tasks, setTasks] = useState(initialTasks);
+        const [nextId, setNextId] = useState(initialTasks.length + 1);
+        const [draft, setDraft] = useState("");
+        const [filter, setFilter] = useState("all");
+        const [isRunning, setIsRunning] = useState(false);
+        const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
-        function addTodo() {
-            const text = inputValue.trim();
-            if (!text) return;
+        useEffect(() => {
+            if (!isRunning) return null;
+
+            const timerId = window.setInterval(() => {
+                setElapsedSeconds((seconds) => seconds + 1);
+            }, 1000);
+
+            return () => window.clearInterval(timerId);
+        }, [isRunning]);
+
+        const summary = useMemo(() => {
+            const totalCount = tasks.length;
+            const doneCount = tasks.filter((task) => task.done).length;
+            const openCount = totalCount - doneCount;
+            const completionRate = totalCount === 0
+                ? 0
+                : Math.round((doneCount / totalCount) * 100);
+
+            const visibleTasks = tasks.filter((task) => {
+                if (filter === "open") return !task.done;
+                if (filter === "done") return task.done;
+                return true;
+            });
+
+            return {
+                visibleTasks,
+                totalCount,
+                openCount,
+                doneCount,
+                completionRate,
+            };
+        }, [tasks, filter]);
+
+        useEffect(() => {
+            const sessionLabel = isRunning ? "집중 중" : "대기";
+            document.title = "Focus Dashboard · " + summary.openCount + " open · " + sessionLabel;
+        }, [summary.openCount, isRunning]);
+
+        function addTask() {
+            const title = draft.trim();
+            if (!title) return;
 
             setNextId((id) => {
-                setTodos((list) => [
-                    ...list,
-                    {id, text, done: false},
+                setTasks((current) => [
+                    ...current,
+                    {id, title, done: false},
                 ]);
                 return id + 1;
             });
-            setInputValue("");
+            setDraft("");
         }
 
-        function toggle(id) {
-            setTodos((list) =>
-                list.map((todo) =>
-                    todo.id === id
-                        ? {...todo, done: !todo.done}
-                        : todo
+        function toggleTask(id) {
+            setTasks((current) =>
+                current.map((task) =>
+                    task.id === id ? {...task, done: !task.done} : task
                 )
             );
         }
 
-        function remove(id) {
-            setTodos((list) => list.filter((todo) => todo.id !== id));
+        function removeTask(id) {
+            setTasks((current) => current.filter((task) => task.id !== id));
         }
 
-        return div(
-            h1("TODO"),
+        function resetTimer() {
+            setIsRunning(false);
+            setElapsedSeconds(0);
+        }
+
+        return main(
+            {class: "app-shell"},
             div(
-                input({
-                    value: inputValue,
-                    onInput: (e) => setInputValue(e.target.value),
-                    placeholder: "할 일을 입력하세요",
-                }),
-                button({onClick: addTodo}, "Add")
-            ),
-            ul(
-                ...todos.map((todo) =>
-                    TodoItem({
-                        todo,
-                        onToggle: toggle,
-                        onRemove: remove,
+                {class: "app"},
+                article(
+                    {class: "panel hero"},
+                    h1("Focus Dashboard"),
+                    p("상태, 파생 계산, cleanup이 한 화면에서 보이는 hooks 데모"),
+                    span(
+                        {class: "task-meta"},
+                        "작업을 관리하고 1초 단위 집중 세션을 함께 추적합니다."
+                    )
+                ),
+                div(
+                    {class: "stats"},
+                    StatCard({
+                        label: "전체 작업",
+                        value: summary.totalCount,
+                        note: "현재 보드에 등록된 항목",
+                    }),
+                    StatCard({
+                        label: "진행 중",
+                        value: summary.openCount,
+                        note: "아직 끝나지 않은 작업",
+                    }),
+                    StatCard({
+                        label: "완료",
+                        value: summary.doneCount,
+                        note: "체크된 작업 수",
+                    }),
+                    StatCard({
+                        label: "완료율",
+                        value: summary.completionRate + "%",
+                        note: "전체 기준 진행률",
                     })
+                ),
+                article(
+                    {class: "panel"},
+                    h2("작업 보드"),
+                    div(
+                        {class: "composer", style: {marginTop: "12px"}},
+                        input({
+                            value: draft,
+                            placeholder: "새 작업을 입력하세요",
+                            onInput: (event) => setDraft(event.target.value),
+                            onKeyDown: (event) => {
+                                if (event.key === "Enter") addTask();
+                            },
+                        }),
+                        button(
+                            {
+                                onClick: addTask,
+                                disabled: !draft.trim(),
+                                type: "button",
+                            },
+                            "추가"
+                        )
+                    ),
+                    div(
+                        {class: "filter-row", style: {marginTop: "14px"}},
+                        span({class: "task-meta"}, "필터"),
+                        div(
+                            {class: "filter-actions"},
+                            FilterButton({
+                                label: "All",
+                                value: "all",
+                                currentFilter: filter,
+                                onSelect: setFilter,
+                            }),
+                            FilterButton({
+                                label: "Open",
+                                value: "open",
+                                currentFilter: filter,
+                                onSelect: setFilter,
+                            }),
+                            FilterButton({
+                                label: "Done",
+                                value: "done",
+                                currentFilter: filter,
+                                onSelect: setFilter,
+                            })
+                        )
+                    ),
+                    summary.visibleTasks.length
+                        ? ul(
+                            {class: "task-list", style: {marginTop: "14px"}},
+                            ...summary.visibleTasks.map((task) =>
+                                TaskItem({
+                                    task,
+                                    onToggle: toggleTask,
+                                    onRemove: removeTask,
+                                })
+                            )
+                        )
+                        : p(
+                            {class: "empty", style: {marginTop: "14px"}},
+                            "이 필터에 해당하는 작업이 없습니다."
+                        )
+                ),
+                article(
+                    {class: "panel timer"},
+                    h2("포커스 세션"),
+                    span({class: "timer-value"}, formatDuration(elapsedSeconds)),
+                    span(
+                        {class: "task-meta"},
+                        isRunning
+                            ? "타이머가 실행 중입니다."
+                            : "시작을 누르면 1초마다 시간이 누적됩니다."
+                    ),
+                    div(
+                        {class: "timer-controls"},
+                        button(
+                            {
+                                onClick: () => setIsRunning((running) => !running),
+                                type: "button",
+                            },
+                            isRunning ? "일시정지" : "시작"
+                        ),
+                        button(
+                            {
+                                onClick: resetTimer,
+                                type: "button",
+                            },
+                            "리셋"
+                        )
+                    )
                 )
             )
         );
