@@ -260,6 +260,7 @@ function Dashboard({ data }) {
 
 이 라이브러리의 `useState`, `useEffect`, `useMemo`는 React의 동명 훅과 동일한 개념에서 출발한다. React 공식 문서는 각 훅의 동작 방식, 주의 사항, 실전 패턴을 상세히 다루고 있으니 함께 참고하면 이해가 깊어진다.
 
+- **hooks**: https://react.dev/reference/react/hooks
 - **useState**: https://react.dev/reference/react/useState
 - **useEffect**: https://react.dev/reference/react/useEffect
 - **useMemo**: https://react.dev/reference/react/useMemo
