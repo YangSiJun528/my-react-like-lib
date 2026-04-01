@@ -35,9 +35,12 @@ _render() 실행 중 일어나는 일:
   useState  → 현재 값을 hooks[] 슬롯에서 읽어 반환 (변경 감지 없음)
   useEffect → depsChanged 확인 → pending 플래그 설정 (실행은 _flushEffects()에서)
   useMemo   → depsChanged 확인 → 재계산 또는 캐시 반환
+  반환값    → 루트 함수가 구성한 최종 vnode 트리 (이후 _commit()에 전달됨)
 ```
 
 render 예약(`comp.update()`)은 `_render()` 호출 이전에 setter에 의해 이미 완료된 상태다. `_render()`는 "어떻게 그릴지"를 계산할 뿐이며, 렌더 트리거는 이미 결정되어 있다.
+
+`_render()`의 반환값은 루트 함수가 구성한 **vnode 트리 전체**다. 모든 중첩 함수 호출(`TaskItem()`, `StatCard()` 등)의 결과가 하나의 트리로 합쳐져 반환되며, 이를 받은 `_commit()`이 이전 vnode와 diff해 DOM에 반영한다.
 
 이 구조에서 `TaskItem`이 3번 호출되면 3개 × (TaskItem 내 훅 수)만큼 슬롯이 `hooks[]`에 추가된다. 태스크가 하나 추가되면 4번 호출로 바뀌어 슬롯 수 자체가 달라진다 — 이것이 단일 인스턴스에서 per-item 훅이 불안전한 근본 이유다.
 
