@@ -182,21 +182,7 @@
 <script type="module">
     import {tags, setRoot, useEffect, useMemo, useState} from "./src/lib.js";
 
-    const {
-        article,
-        button,
-        div,
-        h1,
-        h2,
-        input,
-        li,
-        main,
-        p,
-        small,
-        span,
-        strong,
-        ul,
-    } = tags;
+    const {article, button, div, h1, h2, input, li, main, p, small, span, strong, ul} = tags;
 
     const container = document.getElementById("root");
     const initialTasks = [
@@ -309,6 +295,7 @@
             };
         }, [tasks, filter]);
 
+        //이거 useEffect 없어도 되는거 아님? 참고: https://react.dev/learn/you-might-not-need-an-effect#updating-state-based-on-props-or-state
         useEffect(() => {
             const sessionLabel = isRunning ? "집중 중" : "대기";
             document.title = "Focus Dashboard · " + summary.openCount + " open · " + sessionLabel;
@@ -390,9 +377,6 @@
                             value: draft,
                             placeholder: "새 작업을 입력하세요",
                             onInput: (event) => setDraft(event.target.value),
-                            onKeyDown: (event) => {
-                                if (event.key === "Enter") addTask();
-                            },
                         }),
                         button(
                             {
