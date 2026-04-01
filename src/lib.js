@@ -140,6 +140,22 @@ export function useMemo(fn, deps) {
     return hook.value;
 }
 
+/**
+ * 의존성 배열이 변경될 때만 fn을 재생성하여 함수 참조를 안정적으로 유지한다.
+ * useMemo(() => fn, deps)와 동일하며, 이벤트 핸들러를 렌더마다 새로 만들지 않기 위해 사용한다.
+ *
+ * 렌더마다 새로 생성되는 함수는 diffProps에서 항상 "변경됨"으로 처리되어
+ * 불필요한 PROPS 패치와 removeEventListener/addEventListener 재등록을 유발한다.
+ * useCallback으로 감싸면 deps가 바뀔 때만 함수 참조가 교체된다.
+ *
+ * @param {function} fn - 메모이제이션할 함수
+ * @param {any[]} deps - 변경 감지 대상 의존성 배열
+ * @returns {function} deps가 변경되지 않는 한 이전과 동일한 참조의 함수
+ */
+export function useCallback(fn, deps) {
+    return useMemo(() => fn, deps);
+}
+
 // ─── 3. 태그 팩토리 ───────────────────────────────────────────────────────────
 
 /**

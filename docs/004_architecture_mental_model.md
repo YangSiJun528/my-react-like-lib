@@ -151,4 +151,14 @@ export function useCallback(fn, deps) {
 }
 ```
 
-이 라이브러리는 학습 목적으로 `useCallback`을 구현하지 않았다. 지금의 과잉 패치는 버그가 아니라, 이 문제가 왜 생기는지를 직접 확인할 수 있는 상태다.
+이 라이브러리는 `useCallback`을 지원한다. `useMemo(() => fn, deps)`와 동일하며, deps가 바뀔 때만 함수 참조를 교체한다.
+
+```js
+// useCallback 없이: 렌더마다 새 함수 → PROPS 패치 발생
+const handleClick = () => doSomething();
+
+// useCallback 사용: deps가 같으면 이전 함수 참조 재사용 → PROPS 패치 없음
+const handleClick = useCallback(() => doSomething(), []);
+```
+
+`useCallback`으로 감싼 핸들러는 `diffProps`에서 `Object.is(fn_A, fn_B) → true`가 되어 PROPS 패치가 생성되지 않는다.
