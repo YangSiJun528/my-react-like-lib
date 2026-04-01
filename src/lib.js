@@ -23,7 +23,7 @@ export function setRoot(ComponentFn, container) {
 
         // rAF가 없는 환경(순수 Node.js 등)에서는 pendingRender가 해제되지 않아
         // 이후 update() 호출이 모두 무시된다. 이 라이브러리는 브라우저 전용이다.
-        if (typeof requestAnimationFrame === "function") {
+        if (isFunction(requestAnimationFrame)) {
             requestAnimationFrame(() => {
                 if (!pendingRender) return;
                 pendingRender = false;
@@ -58,7 +58,7 @@ export function useState(initialValue) {
     if (!hook.set) {
         hook.set = (next) => {
             const value =
-                typeof next === "function" ? next(hook.value) : next;
+                isFunction(next) ? next(hook.value) : next;
 
             if (Object.is(hook.value, value)) return;
 
@@ -207,12 +207,12 @@ class FunctionComponent {
  */
 export function diff(oldNode, newNode, path = []) {
     if (oldNode == null && newNode == null) return [];
-    if (oldNode == null) return [{type: "CREATE", path, newVNode: newNode}];
-    if (newNode == null) return [{type: "REMOVE", path}];
+    if (oldNode == null) return [{type: PatchType.CREATE, path, newVNode: newNode}];
+    if (newNode == null) return [{type: PatchType.REMOVE, path}];
 
     if (isText(oldNode) && isText(newNode)) {
         return oldNode !== newNode
-            ? [{type: "TEXT", path, text: newNode}]
+            ? [{type: PatchType.TEXT, path, text: newNode}]
             : [];
     }
 
@@ -220,7 +220,7 @@ export function diff(oldNode, newNode, path = []) {
     const {tag: newTag, props: newProps, children: newChildren} = newNode;
 
     if (oldTag !== newTag) {
-        return [{type: "REPLACE", path, newVNode: newNode}];
+        return [{type: PatchType.REPLACE, path, newVNode: newNode}];
     }
 
     return [
@@ -253,7 +253,7 @@ export function applyPatches(domNode, patches) {
     // 낮은 인덱스 노드를 먼저 삭제하면 형제 노드의 인덱스가 밀려
     // 이후 navigate가 잘못된 노드를 가리키게 된다.
     const removes = patches
-        .filter((p) => p.type === "REMOVE")
+        .filter((p) => p.type === PatchType.REMOVE)
         .sort((a, b) => {
             if (a.path.length !== b.path.length) {
                 return b.path.length - a.path.length;
@@ -263,13 +263,13 @@ export function applyPatches(domNode, patches) {
             return bi - ai;
         });
 
-    const reorders = patches.filter((p) => p.type === "REORDER");
+    const reorders = patches.filter((p) => p.type === PatchType.REORDER);
     const others = patches.filter(
-        (p) => p.type !== "REMOVE" && p.type !== "REORDER"
+        (p) => p.type !== PatchType.REMOVE && p.type !== PatchType.REORDER
     );
 
     for (const patch of [...removes, ...reorders, ...others]) {
-        if (patch.type === "REMOVE") {
+        if (patch.type === PatchType.REMOVE) {
             if (patch.path.length === 0) {
                 root.parentNode?.removeChild(root);
                 root = null;
@@ -281,7 +281,7 @@ export function applyPatches(domNode, patches) {
             continue;
         }
 
-        if (patch.type === "REORDER") {
+        if (patch.type === PatchType.REORDER) {
             const parent = navigate(patch.path);
             const children = Array.from(parent.childNodes);
             // appendChild는 DOM에 이미 있는 노드를 호출하면 현재 위치에서 제거 후 끝에 추가한다.
@@ -294,7 +294,7 @@ export function applyPatches(domNode, patches) {
             continue;
         }
 
-        if (patch.type === "CREATE") {
+        if (patch.type === PatchType.CREATE) {
             const parentPath = patch.path.slice(0, -1);
             const idx = patch.path[patch.path.length - 1];
             const parent = navigate(parentPath);
@@ -304,7 +304,7 @@ export function applyPatches(domNode, patches) {
             continue;
         }
 
-        if (patch.type === "REPLACE") {
+        if (patch.type === PatchType.REPLACE) {
             const newEl = createElement(patch.newVNode);
 
             if (patch.path.length === 0) {
@@ -319,7 +319,7 @@ export function applyPatches(domNode, patches) {
             continue;
         }
 
-        if (patch.type === "PROPS") {
+        if (patch.type === PatchType.PROPS) {
             const node = navigate(patch.path);
 
             for (const key of patch.removedProps) {
@@ -330,7 +330,7 @@ export function applyPatches(domNode, patches) {
             continue;
         }
 
-        if (patch.type === "TEXT") {
+        if (patch.type === PatchType.TEXT) {
             const node = navigate(patch.path);
             node.textContent = patch.text;
         }
@@ -428,7 +428,7 @@ function diffProps(oldProps, newProps, path) {
     }
 
     if (Object.keys(changedProps).length || removedProps.length) {
-        return [{type: "PROPS", path, props: changedProps, removedProps}];
+        return [{type: PatchType.PROPS, path, props: changedProps, removedProps}];
     }
 
     return [];
@@ -483,7 +483,7 @@ function diffChildren(oldChildren, newChildren, path) {
 
         if (oldIdx == null) {
             patches.push({
-                type: "CREATE",
+                type: PatchType.CREATE,
                 path: [...path, newIdx],
                 newVNode: newChild,
             });
@@ -496,7 +496,7 @@ function diffChildren(oldChildren, newChildren, path) {
 
     for (let oldIdx = 0; oldIdx < oldChildren.length; oldIdx++) {
         if (!usedOldIndices.has(oldIdx)) {
-            patches.push({type: "REMOVE", path: [...path, oldIdx]});
+            patches.push({type: PatchType.REMOVE, path: [...path, oldIdx]});
         }
     }
 
@@ -525,7 +525,7 @@ function diffChildren(oldChildren, newChildren, path) {
     const reordered = order.some((idx, i) => idx !== i);
 
     if (reordered && order.length > 1) {
-        patches.push({type: "REORDER", path, order});
+        patches.push({type: PatchType.REORDER, path, order});
     }
 
     return patches;
@@ -553,55 +553,72 @@ function applyProps(el, props) {
  * @param {*} value - prop 값 (함수, 문자열, 객체, null 등)
  */
 function setProp(el, key, value) {
-    if (key.startsWith("on")) {
-        const type = key.slice(2).toLowerCase();
-        const store = el._events || (el._events = {});
-
-        // el._events에 이전 핸들러를 캐싱하여 리렌더 시 제거 후 재등록한다.
-        // addEventListener만 반복 호출하면 리스너가 누적되므로 스토어가 필수다.
-        if (store[type]) {
-            el.removeEventListener(type, store[type]);
-            delete store[type];
-        }
-
-        if (typeof value === "function") {
-            el.addEventListener(type, value);
-            store[type] = value;
-        }
-        return;
-    }
-
-    if (key === "class" || key === "className") {
-        el.className = value ?? "";
-        return;
-    }
-
-    if (key === "style") {
-        el.style.cssText = "";
-        if (typeof value === "string") {
-            el.style.cssText = value;
-        } else if (value && typeof value === "object") {
-            Object.assign(el.style, value);
-        }
-        return;
-    }
-
-    // 폼 요소의 value/checked/selected는 setAttribute로는 초기값만 설정되고
-    // 실제 DOM 상태를 반영하지 못하므로 프로퍼티에 직접 할당한다.
-    if (key === "value" || key === "checked" || key === "selected") {
-        el[key] = value ?? (key === "value" ? "" : false);
-        return;
-    }
-
-    if (value == null || value === false) {
-        el.removeAttribute(key);
-        return;
-    }
-
+    if (key.startsWith("on")) { setEvent(el, key, value); return; }
+    if (key === "class" || key === "className") { setClass(el, value); return; }
+    if (key === "style") { setStyle(el, value); return; }
+    if (key === "value" || key === "checked" || key === "selected") { setFormProp(el, key, value); return; }
+    if (value == null || value === false) { el.removeAttribute(key); return; }
     el.setAttribute(key, value === true ? "" : value);
 }
 
-// ─── 9. VNode 팩토리 내부 ────────────────────────────────────────────────────
+/**
+ * 이벤트 핸들러를 DOM 요소에 등록한다.
+ * el._events에 이전 핸들러를 캐싱하여 리렌더 시 제거 후 재등록한다.
+ * addEventListener만 반복 호출하면 리스너가 누적되므로 스토어가 필수다.
+ * @param {HTMLElement} el - 이벤트를 등록할 DOM 요소
+ * @param {string} key - 이벤트 prop 이름 (예: "onClick")
+ * @param {function|null} value - 이벤트 핸들러 함수. null이면 기존 핸들러만 제거한다.
+ */
+function setEvent(el, key, value) {
+    const type = key.slice(2).toLowerCase();
+    const store = el._events || (el._events = {});
+    if (store[type]) {
+        el.removeEventListener(type, store[type]);
+        delete store[type];
+    }
+    if (isFunction(value)) {
+        el.addEventListener(type, value);
+        store[type] = value;
+    }
+}
+
+/**
+ * DOM 요소의 className을 설정한다.
+ * @param {HTMLElement} el - className을 설정할 DOM 요소
+ * @param {string|null|undefined} value - 클래스 문자열. null/undefined이면 빈 문자열로 설정한다.
+ */
+function setClass(el, value) {
+    el.className = value ?? "";
+}
+
+/**
+ * DOM 요소의 인라인 스타일을 설정한다.
+ * 문자열이면 cssText로, 객체이면 Object.assign으로 적용한다.
+ * @param {HTMLElement} el - 스타일을 설정할 DOM 요소
+ * @param {string|Object|null|undefined} value - 스타일 값 (문자열 또는 스타일 객체)
+ */
+function setStyle(el, value) {
+    el.style.cssText = "";
+    if (isString(value)) {
+        el.style.cssText = value;
+    } else if (isObject(value)) {
+        Object.assign(el.style, value);
+    }
+}
+
+/**
+ * 폼 요소의 value/checked/selected 프로퍼티를 직접 할당한다.
+ * setAttribute로는 초기값만 설정되고 실제 DOM 상태를 반영하지 못하므로
+ * 프로퍼티에 직접 할당한다.
+ * @param {HTMLElement} el - 프로퍼티를 설정할 폼 DOM 요소
+ * @param {string} key - 프로퍼티 이름 ("value", "checked", "selected" 중 하나)
+ * @param {*} value - 설정할 값. null/undefined이면 value는 "", 나머지는 false로 설정한다.
+ */
+function setFormProp(el, key, value) {
+    el[key] = value ?? (key === "value" ? "" : false);
+}
+
+// ─── 9. VNode 팩토리 내부 ───────────────────────────────────────────────────
 
 /**
  * 주어진 태그 이름과 인자로 vnode 객체를 생성하는 팩토리 함수.
@@ -631,7 +648,28 @@ function tag(name, ...args) {
     };
 }
 
-// ─── 10. VNode 유틸리티 ───────────────────────────────────────────────────────
+// ─── 10. 유틸리티 ────────────────────────────────────────────────────────────
+
+const PatchType = Object.freeze({
+    CREATE:  "CREATE",
+    REMOVE:  "REMOVE",
+    REPLACE: "REPLACE",
+    PROPS:   "PROPS",
+    TEXT:    "TEXT",
+    REORDER: "REORDER",
+});
+
+function isFunction(v) {
+    return typeof v === "function";
+}
+
+function isString(v) {
+    return typeof v === "string";
+}
+
+function isObject(v) {
+    return v !== null && typeof v === "object";
+}
 
 /**
  * 주어진 값이 vnode 객체인지 확인한다.
@@ -639,7 +677,7 @@ function tag(name, ...args) {
  * @returns {boolean} $$type이 "vnode"인 객체이면 true
  */
 function isVNode(arg) {
-    return arg !== null && typeof arg === "object" && arg.$$type === "vnode";
+    return isObject(arg) && arg.$$type === "vnode";
 }
 
 /**
@@ -651,8 +689,7 @@ function isVNode(arg) {
 function isProps(arg) {
     // vnode 객체와 자식 배열을 props로 오인하지 않도록 모두 배제한다
     return (
-        arg !== null &&
-        typeof arg === "object" &&
+        isObject(arg) &&
         !isVNode(arg) &&
         !Array.isArray(arg)
     );
@@ -664,7 +701,7 @@ function isProps(arg) {
  * @returns {boolean} 문자열이나 숫자이면 true
  */
 function isText(node) {
-    return typeof node === "string" || typeof node === "number";
+    return isString(node) || typeof node === "number";
 }
 
 /**
@@ -689,3 +726,4 @@ function normalizeChildren(args) {
         .flat()
         .filter((c) => c !== null && c !== undefined && typeof c !== "boolean");
 }
+
