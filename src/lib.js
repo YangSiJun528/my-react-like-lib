@@ -28,7 +28,7 @@ function logVerbose(category, ...args) {
  * @returns {FunctionComponent} 마운트된 컴포넌트 인스턴스
  */
 export function setRoot(ComponentFn, container) {
-    log("mount", `${ComponentFn.name || "(anonymous)"} →`, container);
+    log("mount", `${ComponentFn.name || "(익명)"} →`, container);
     const instance = new FunctionComponent(ComponentFn);
     let pendingRender = false;
 
@@ -79,6 +79,7 @@ export function useState(initialValue) {
         };
     }
 
+    logVerbose("state", `hook#${hookIdx}: 현재값 = ${formatVal(hook.value)}`);
     return [hook.value, hook.set];
 }
 
@@ -100,7 +101,8 @@ export function useEffect(fn, deps) {
     });
 
     if (depsChanged(hook.deps, deps)) {
-        log("effect", `hook#${hookIdx}: deps changed, scheduled`);
+        log("effect", `hook#${hookIdx}: deps 변경, 실행 예약`);
+        logVerbose("effect", `hook#${hookIdx}: 이전 deps = ${formatVal(hook.deps)}, 새 deps = ${formatVal(deps)}`);
         hook.fn = fn;
         hook.deps = deps;
         hook.pending = true;
@@ -125,12 +127,14 @@ export function useMemo(fn, deps) {
     });
 
     if (!hook.initialized || depsChanged(hook.deps, deps)) {
-        log("memo", `hook#${hookIdx}: recomputed`);
+        log("memo", `hook#${hookIdx}: 재계산`);
         hook.value = fn();
         hook.deps = deps;
         hook.initialized = true;
+        logVerbose("memo", `hook#${hookIdx}: 새 deps = ${formatVal(deps)}, 결과 = ${formatVal(hook.value)}`);
     } else {
-        log("memo", `hook#${hookIdx}: hit`);
+        log("memo", `hook#${hookIdx}: 캐시`);
+        logVerbose("memo", `hook#${hookIdx}: deps = ${formatVal(deps)}, 캐시값 = ${formatVal(hook.value)}`);
     }
 
     return hook.value;
@@ -166,7 +170,7 @@ class FunctionComponent {
     _render() {
         // currentComponent를 this로 설정하여 훅이 올바른 인스턴스에 접근하도록 한다.
         // try/finally로 렌더 도중 에러가 나도 currentComponent가 null로 복원된다.
-        log("render", this.fn.name || "(anonymous)");
+        log("render", this.fn.name || "(익명)");
         currentComponent = this;
         this.hookIndex = 0;
 
@@ -182,11 +186,12 @@ class FunctionComponent {
         // cleanup → fn 순서: 이전 이펙트의 정리 작업을 먼저 실행한 뒤 새 이펙트를 실행한다.
         const pendingCount = this.hooks.filter((h) => h?.pending).length;
         if (pendingCount > 0) {
-            log("effect", `flushing ${pendingCount} effect(s)`);
+            log("effect", `${pendingCount}개 이펙트 실행`);
         }
         this.hooks.forEach((hook) => {
             if (!hook?.pending) return;
             hook.cleanup?.();
+            logVerbose("effect", `hook 실행: ${formatVal(hook.fn)}`);
             hook.cleanup = hook.fn?.() ?? null;
             hook.pending = false;
         });
@@ -195,12 +200,12 @@ class FunctionComponent {
     // container: 초기 마운트 시 명시적으로 전달, 재렌더 시는 기존 domNode의 부모를 재사용
     _commit(newVNode, container = this.domNode?.parentNode) {
         if (!this.domNode) {
-            log("commit", `${this.fn.name || "(anonymous)"} — first render`);
+            log("commit", `${this.fn.name || "(익명)"} — 첫 렌더`);
             this.domNode = createElement(newVNode);
             container.appendChild(this.domNode);
         } else {
             const patches = diff(this.vnode, newVNode);
-            log("commit", `${this.fn.name || "(anonymous)"} — patches: ${patches.length}`);
+            log("commit", `${this.fn.name || "(익명)"} — 패치: ${patches.length}개`);
             logVerbose("commit", patches.map((p) => p.type));
             this.domNode = applyPatches(this.domNode, patches);
         }
@@ -263,7 +268,7 @@ export function diff(oldNode, newNode, path = []) {
  * @returns {HTMLElement|Text|null} 패치 적용 후의 루트 DOM 노드 (REPLACE 시 변경될 수 있음)
  */
 export function applyPatches(domNode, patches) {
-    log("patch", `applying ${patches.length} patch(es)`);
+    log("patch", `${patches.length}개 패치 적용`);
     let root = domNode;
 
     // path는 루트 DOM 노드에서 대상 노드까지의 childNodes 인덱스 배열이다.
@@ -689,6 +694,17 @@ function tag(name, ...args) {
 }
 
 // ─── 10. 유틸리티 ────────────────────────────────────────────────────────────
+
+/**
+ * 값을 디버그용 문자열로 포맷한다.
+ * 함수는 이름을, 배열은 각 요소를, 객체는 {…}로 표시한다.
+ */
+function formatVal(v) {
+    if (isFunction(v)) return `[fn:${v.name || "(익명)"}]`;
+    if (Array.isArray(v)) return `[${v.map(formatVal).join(", ")}]`;
+    if (isObject(v)) return `{…}`;
+    return String(v);
+}
 
 const PatchType = Object.freeze({
     CREATE: "CREATE",

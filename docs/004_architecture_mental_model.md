@@ -121,3 +121,34 @@ diff 흐름 (hooks와 독립):
   diff(oldVNode, newVNode) → patches[]
   applyPatches(domNode, patches) → DOM 반영
 ```
+
+---
+
+## 6. 함수 참조 재생성과 과잉 패치
+
+루트 컴포넌트 함수는 렌더마다 전체가 재실행된다. 함수 안에 선언된 모든 함수 — `function` 선언이든 화살표 함수든 — 는 렌더마다 새 참조가 만들어진다.
+
+`diffProps`는 `Object.is`로 props를 비교하므로, 내용이 같아도 새 함수 참조는 항상 "변경됨"으로 처리된다. 결과적으로 이벤트 핸들러가 붙은 요소 수만큼 PROPS 패치가 생긴다.
+
+```
+렌더 전: button.onClick = fn_A  (이전 렌더에서 생성된 함수)
+렌더 후: button.onClick = fn_B  (이번 렌더에서 새로 생성된 함수)
+Object.is(fn_A, fn_B) → false → PROPS 패치 생성
+```
+
+예를 들어 타이머가 1초마다 `elapsedSeconds`를 갱신하면:
+
+- 실제 변경: 타이머 숫자 텍스트 1개
+- 이벤트 핸들러 PROPS 패치: 버튼/인풋 수만큼 (앱 규모에 비례)
+
+**DOM에 미치는 영향:** PROPS 패치는 실제로 `removeEventListener` → `addEventListener`를 다시 실행한다. 기능은 올바르지만 불필요한 DOM 조작이 발생한다.
+
+**React의 해법:** `useCallback(fn, deps)` — deps가 바뀔 때만 함수를 재생성해 참조를 안정적으로 유지한다. `useCallback`은 `useMemo(() => fn, deps)`와 동일하며, 이 라이브러리에 추가하려면 한 줄이면 된다:
+
+```js
+export function useCallback(fn, deps) {
+    return useMemo(() => fn, deps);
+}
+```
+
+이 라이브러리는 학습 목적으로 `useCallback`을 구현하지 않았다. 지금의 과잉 패치는 버그가 아니라, 이 문제가 왜 생기는지를 직접 확인할 수 있는 상태다.
