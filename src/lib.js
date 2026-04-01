@@ -4,10 +4,9 @@
  * 앱의 진입점. 루트 컴포넌트를 컨테이너에 마운트하고
  * 상태 변경 시 자동으로 리렌더링되도록 연결한다.
  *
- * update()는 rAF로 배칭한다:
- * - rAF: 브라우저 환경에서 프레임 단위로 배칭 (불필요한 중간 렌더 방지)
- * - vitest: vi.useFakeTimers()가 rAF도 교체하므로 vi.runAllTimers()로 flush 가능
- * pendingRender 플래그로 중복 등록을 방지한다.
+ * update()는 rAF로 배칭한다 (브라우저 전용).
+ * pendingRender 플래그로 중복 등록을 방지하며,
+ * vitest에서는 vi.useFakeTimers() + vi.runAllTimers()로 flush한다.
  *
  * @param {function(): object} ComponentFn - 루트 컴포넌트 함수 (훅 사용 가능)
  * @param {HTMLElement} container - 마운트 대상 DOM 컨테이너
@@ -21,15 +20,11 @@ export function setRoot(ComponentFn, container) {
         if (pendingRender) return;
         pendingRender = true;
 
-        // rAF가 없는 환경(순수 Node.js 등)에서는 pendingRender가 해제되지 않아
-        // 이후 update() 호출이 모두 무시된다. 이 라이브러리는 브라우저 전용이다.
-        if (isFunction(requestAnimationFrame)) {
-            requestAnimationFrame(() => {
-                if (!pendingRender) return;
-                pendingRender = false;
-                instance._doUpdate();
-            });
-        }
+        requestAnimationFrame(() => {
+            if (!pendingRender) return;
+            pendingRender = false;
+            instance._doUpdate();
+        });
     };
 
     instance.mount(container);
